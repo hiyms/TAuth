@@ -40,7 +40,6 @@ class AuthStateTest {
             AuthState.TimedOut("test")
         )
 
-        // Each should be recognized by when/is checks
         for (state in states) {
             val result = when (state) {
                 is AuthState.Pending -> "pending"
@@ -52,5 +51,41 @@ class AuthStateTest {
         }
 
         assertEquals(4, states.toSet().size)
+    }
+
+    @Test
+    fun `auto pass requires registered verified premium session`() {
+        assertTrue(AuthStateMachine.shouldAutoPass(
+            isPremium = true,
+            isVerified = true,
+            isRegistered = true
+        ))
+    }
+
+    @Test
+    fun `first premium login does not auto pass before register`() {
+        assertFalse(AuthStateMachine.shouldAutoPass(
+            isPremium = true,
+            isVerified = false,
+            isRegistered = false
+        ))
+    }
+
+    @Test
+    fun `verified account does not auto pass on offline session`() {
+        assertFalse(AuthStateMachine.shouldAutoPass(
+            isPremium = false,
+            isVerified = true,
+            isRegistered = true
+        ))
+    }
+
+    @Test
+    fun `premium registered but unverified account still needs login once`() {
+        assertFalse(AuthStateMachine.shouldAutoPass(
+            isPremium = true,
+            isVerified = false,
+            isRegistered = true
+        ))
     }
 }

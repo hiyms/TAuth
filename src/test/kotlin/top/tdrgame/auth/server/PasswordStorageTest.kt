@@ -1,6 +1,7 @@
 package top.tdrgame.auth.server
 
 import org.junit.jupiter.api.Test
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.*
 import javax.crypto.SecretKeyFactory
@@ -12,20 +13,17 @@ import kotlin.test.*
  *
  * 直接覆盖生产实现 [PasswordHasher]（而非复制粘贴一份算法副本），
  * 验证 PBKDF2 哈希/校验、salt 随机性、格式解析与 offlineauth 兼容性。
- * 这些测试不依赖 Minecraft/Forge 运行时，可直接运行。
  */
 class PasswordStorageTest {
 
     @Test
     fun `hash produces v1 five-segment format`() {
         val hash = PasswordHasher.hash("testPassword123", 16, 10000, 256)
-        // v1:<iterations>:<keyBits>:<saltB64>:<hashB64>
         val parts = hash.split(PasswordHasher.SALT_SEPARATOR)
         assertEquals(5, parts.size)
         assertEquals("v1", parts[0])
         assertEquals("10000", parts[1])
         assertEquals("256", parts[2])
-        // 16 字节 salt → Base64 约 24 字符；hash(256bit=32B) → 约 44 字符
         assertTrue(parts[3].length >= 20, "Salt too short: ${parts[3].length}")
         assertTrue(parts[4].isNotEmpty())
     }
@@ -58,7 +56,7 @@ class PasswordStorageTest {
             "",
             "password",
             "密码测试",
-            "p@\${'$'}w0rd!汉字",
+            "p@\$w0rd!汉字",
             "   spaces   ",
             "a".repeat(1000)
         )
@@ -77,13 +75,23 @@ class PasswordStorageTest {
         assertFalse(PasswordHasher.verify("anything", "no-separator"))
         assertFalse(PasswordHasher.verify("anything", "not:valid:base64"))
         assertFalse(PasswordHasher.verify("anything", ""))
-        // 前缀对但段数错
         assertFalse(PasswordHasher.verify("anything", "v1:10000:256:onlyone"))
     }
 
     @Test
+    fun `parse rejects semantically invalid hash params`() {
+        val b64 = Base64.getEncoder()
+        val salt = b64.encodeToString(ByteArray(16) { 1 })
+        val hash = b64.encodeToString(ByteArray(32) { 2 })
+        assertNull(PasswordHasher.parse("v1:0:256:$salt:$hash"))
+        assertNull(PasswordHasher.parse("v1:-1:256:$salt:$hash"))
+        assertNull(PasswordHasher.parse("v1:10000:0:$salt:$hash"))
+        assertNull(PasswordHasher.parse("v1:10000:256::${hash}"))
+        assertNull(PasswordHasher.parse("v1:10000:256:$salt:"))
+    }
+
+    @Test
     fun `configurable parameters are honored`() {
-        // 不同迭代次数应产生可校验的哈希
         val hash = PasswordHasher.hash("pw", 32, 20000, 512)
         val parsed = PasswordHasher.parse(hash)
         assertNotNull(parsed)
@@ -95,8 +103,6 @@ class PasswordStorageTest {
 
     @Test
     fun `offlineauth legacy two-segment format is verified with default params`() {
-        // 用 offlineauth 完全一致的算法/格式手工构造一条 salt:hash 记录，
-        // 验证 PasswordHasher 能解析并校验（迁移兼容性）。
         val password = "offlineAuthTest123"
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
         val spec = PBEKeySpec(password.toCharArray(), salt, 10000, 256)
@@ -105,11 +111,29 @@ class PasswordStorageTest {
 
         assertTrue(PasswordHasher.verify(password, legacy),
             "Legacy offlineauth salt:hash must verify")
-        // 解析应回退到默认参数
         val parsed = PasswordHasher.parse(legacy)
         assertNotNull(parsed)
         assertEquals(PasswordHasher.LEGACY_ITERATIONS, parsed.iterations)
         assertEquals(PasswordHasher.LEGACY_KEY_LENGTH, parsed.keyLengthBits)
         assertFalse(PasswordHasher.verify("wrongPassword", legacy))
+    }
+
+    @Test
+    fun `challenge response is stable and challenge-specific`() {
+        val key = ByteArray(32) { it.toByte() }
+        val response1 = challengeResponse(key, 1L)
+        val response1Again = challengeResponse(key, 1L)
+        val response2 = challengeResponse(key, 2L)
+        assertContentEquals(response1, response1Again)
+        assertFalse(MessageDigest.isEqual(response1, response2))
+        assertEquals(32, response1.size)
+    }
+
+    private fun challengeResponse(derivedKey: ByteArray, challenge: Long): ByteArray {
+        val md = MessageDigest.getInstance("SHA-256")
+        md.update(derivedKey)
+        val buf = java.nio.ByteBuffer.allocate(8).putLong(challenge).array()
+        md.update(buf)
+        return md.digest()
     }
 }
