@@ -17,14 +17,21 @@ import kotlin.test.*
 class PasswordStorageTest {
 
     @Test
-    fun `player auth data has Java visible no arg constructor for Nitrite`() {
-        val instance = PlayerAuthData::class.java.getDeclaredConstructor().newInstance()
-        assertEquals("", instance.playerName)
-        assertEquals("", instance.passwordHash)
-        instance.playerName = "Player"
-        instance.passwordHash = "hash"
-        assertEquals("Player", instance.playerName)
-        assertEquals("hash", instance.passwordHash)
+    fun `player auth data converter round trips all fields for Nitrite`() {
+        val converter = PlayerAuthDataConverter()
+        val source = PlayerAuthData(
+            playerName = "Player",
+            passwordHash = "v1:hash",
+            verified = true,
+            lastLoginType = "online",
+            autoLoginMachineId = "machine",
+            autoLoginIp = "127.0.0.1"
+        )
+
+        val document = converter.toDocument(source, org.dizitart.no2.common.mapper.SimpleNitriteMapper())
+        val restored = converter.fromDocument(document, org.dizitart.no2.common.mapper.SimpleNitriteMapper())
+
+        assertEquals(source, restored)
     }
 
     @Test

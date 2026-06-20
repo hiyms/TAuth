@@ -1,10 +1,14 @@
 package top.tdrgame.auth.server
 
 import org.dizitart.no2.Nitrite
+import org.dizitart.no2.collection.Document
+import org.dizitart.no2.common.mapper.EntityConverter
+import org.dizitart.no2.common.mapper.NitriteMapper
 import org.dizitart.no2.filters.Filter
 import org.dizitart.no2.filters.FluentFilter
 import org.dizitart.no2.mvstore.MVStoreModule
 import org.dizitart.no2.repository.ObjectRepository
+import org.dizitart.no2.repository.annotations.Id
 import top.tdrgame.auth.config.AuthConfig
 
 /**
@@ -12,20 +16,41 @@ import top.tdrgame.auth.config.AuthConfig
  */
 data class PlayerAuthData(
     /** 主键：玩家名（大小写按游戏内实际名称存储）。 */
-    var playerName: String,
+    @field:Id
+    val playerName: String,
     /** PBKDF2 哈希结果。新条目为 "v1:iter:keyBits:saltB64:hashB64"；迁移自 offlineauth 的为 "saltB64:hashB64"。 */
-    var passwordHash: String,
+    val passwordHash: String,
     /** 是否已证明拥有正版账号。true 时仅正版进入可免验证，离线进入仍需要 /login。 */
-    var verified: Boolean = false,
+    val verified: Boolean = false,
     /** 上次登录类型："online" 或 "offline"，null 表示从未登录过。 */
-    var lastLoginType: String? = null,
+    val lastLoginType: String? = null,
     /** 客户端自动登录绑定的机器 ID。 */
-    var autoLoginMachineId: String? = null,
+    val autoLoginMachineId: String? = null,
     /** 客户端自动登录绑定的上次来源 IP（服务端观察值）。 */
-    var autoLoginIp: String? = null
-) {
-    /** Nitrite SimpleNitriteMapper needs a Java-visible no-arg constructor. */
-    constructor() : this("", "", false, null, null, null)
+    val autoLoginIp: String? = null
+)
+
+/** Nitrite SimpleNitriteMapper converter for [PlayerAuthData]. */
+class PlayerAuthDataConverter : EntityConverter<PlayerAuthData> {
+    override fun getEntityType(): Class<PlayerAuthData> = PlayerAuthData::class.java
+
+    override fun toDocument(entity: PlayerAuthData, nitriteMapper: NitriteMapper): Document =
+        Document.createDocument("playerName", entity.playerName)
+            .put("passwordHash", entity.passwordHash)
+            .put("verified", entity.verified)
+            .put("lastLoginType", entity.lastLoginType)
+            .put("autoLoginMachineId", entity.autoLoginMachineId)
+            .put("autoLoginIp", entity.autoLoginIp)
+
+    override fun fromDocument(document: Document, nitriteMapper: NitriteMapper): PlayerAuthData =
+        PlayerAuthData(
+            playerName = document.get("playerName", String::class.java) ?: "",
+            passwordHash = document.get("passwordHash", String::class.java) ?: "",
+            verified = document.get("verified", java.lang.Boolean::class.java)?.booleanValue() ?: false,
+            lastLoginType = document.get("lastLoginType", String::class.java),
+            autoLoginMachineId = document.get("autoLoginMachineId", String::class.java),
+            autoLoginIp = document.get("autoLoginIp", String::class.java)
+        )
 }
 
 /**
@@ -65,6 +90,7 @@ class PasswordStorage {
         // Nitrite v4 默认使用 SimpleNitriteMapper，无需显式加载 Jackson mapper
         val opened = Nitrite.builder()
             .loadModule(MVStoreModule("config/tauth/auth.db"))
+            .registerEntityConverter(PlayerAuthDataConverter())
             .openOrCreate()
         db = opened
         return opened.getRepository(PlayerAuthData::class.java)
