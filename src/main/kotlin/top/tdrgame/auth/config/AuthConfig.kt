@@ -23,6 +23,15 @@ object AuthConfig {
     /** 密码错误最大尝试次数，达到即踢出。 */
     val maxFailAttempts: ForgeConfigSpec.IntValue
 
+    /** PBKDF2 加盐字节数。默认 16，范围 [8,64]。 */
+    val saltBytes: ForgeConfigSpec.IntValue
+
+    /** PBKDF2 迭代次数。默认 10000，与 offlineauth 对齐。 */
+    val iterations: ForgeConfigSpec.IntValue
+
+    /** PBKDF2 输出密钥位数。默认 256。 */
+    val keyLengthBits: ForgeConfigSpec.IntValue
+
     init {
         val builder = ForgeConfigSpec.Builder()
         builder.push("auth")
@@ -31,6 +40,13 @@ object AuthConfig {
             .defineInRange("loginTimeoutSeconds", 90, 10, 3600)
         maxFailAttempts = builder.comment("Max wrong password attempts before kick")
             .defineInRange("maxFailAttempts", 5, 1, 100)
+        // 密码加盐配置：默认与 offlineauth / TrueUUID 兼容的参数
+        saltBytes = builder.comment("Salt length in bytes for password hashing")
+            .defineInRange("saltBytes", 16, 8, 64)
+        iterations = builder.comment("PBKDF2 iteration count")
+            .defineInRange("iterations", 10000, 1000, 500000)
+        keyLengthBits = builder.comment("PBKDF2 derived key length in bits")
+            .defineInRange("keyLengthBits", 256, 128, 512)
         builder.pop()
         spec = builder.build()
     }
@@ -42,4 +58,8 @@ object AuthConfig {
     fun register() {
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, spec, "tauth-server.toml")
     }
+
+    /** 供 Java 代码调用的便捷开关：auth.enabled 是否开启。 */
+    @JvmStatic
+    fun isEnabled(): Boolean = enabled.get()
 }

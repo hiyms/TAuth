@@ -5,11 +5,7 @@ import org.dizitart.no2.mvstore.MVStoreModule
 import org.dizitart.no2.repository.ObjectRepository
 import org.dizitart.no2.filters.Filter
 import org.dizitart.no2.filters.FluentFilter
-import java.security.SecureRandom
-import java.security.spec.InvalidKeySpecException
-import java.util.*
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.PBEKeySpec
+import top.tdrgame.auth.config.AuthConfig
 
 /**
  * 存储在 Nitrite 数据库中的玩家认证数据。
@@ -17,7 +13,7 @@ import javax.crypto.spec.PBEKeySpec
 data class PlayerAuthData(
     /** 主键：玩家名（大小写按游戏内实际名称存储）。 */
     val playerName: String,
-    /** PBKDF2 哈希结果，格式 "saltBase64:hashBase64"。与 offlineauth 兼容。 */
+    /** PBKDF2 哈希结果。新条目为 "v1:iter:keyBits:saltB64:hashB64"；迁移自 offlineauth 的为 "saltB64:hashB64"。 */
     val passwordHash: String,
     /** 是否已证明拥有正版账号。true 时正版进入免验证，离线进入仍需要 /login。 */
     val verified: Boolean = false,
@@ -30,36 +26,41 @@ data class PlayerAuthData(
  *
  * 使用 Nitrite 的 Java API（不使用 potassium-nitrite，避免版本兼容问题）。
  *
- * PBKDF2WithHmacSHA256 参数与 offlineauth 完全一致：
- * - 迭代次数 10000，密钥长度 256 位
- * - 随机 16 字节 salt
- * - 存储格式 Base64(salt):Base64(hash)
+ * 哈希算法为 PBKDF2WithHmacSHA256，迭代次数 / 密钥长度 / 加盐字节数由
+ * [AuthConfig] 提供（默认与 offlineauth 兼容：10000 / 256 / 16）。
+ *
+ * 存储格式（TAuth 自身写入）：
+ * ```
+ * v1:<iterations>:<keyBits>:<base64(salt)>:<base64(hash)>
+ * ```
+ * 验证时兼容两种来源：
+ * - 带 `v1:` 前缀的本模组条目，参数取自条目本身；
+ * - 无前缀的旧格式 `base64(salt):base64(hash)`（offlineauth），按默认参数解析。
  *
  * 数据文件：config/tauth/auth.db
  */
 class PasswordStorage {
 
-    private val db: Nitrite
-    private val repo: ObjectRepository<PlayerAuthData>
+    // 延迟打开数据库：客户端选装时构造本对象不会创建 auth.db，
+    // 只有服务端真正访问 repo 时才落盘。
+    private val repo: ObjectRepository<PlayerAuthData> by lazy { openRepo() }
 
     companion object {
-        private const val ALGORITHM = "PBKDF2WithHmacSHA256"
-        private const val ITERATIONS = 10000
-        private const val KEY_LENGTH = 256
-        private const val SALT_BYTES = 16
-        private const val SALT_SEPARATOR = ":"
+        /** offlineauth 默认加盐字节数。 */
+        const val LEGACY_SALT_BYTES = 16
     }
 
-    init {
+    private var db: Nitrite? = null
+
+    private fun openRepo(): ObjectRepository<PlayerAuthData> {
         // Nitrite 不会自动创建父目录
         java.io.File("config/tauth").mkdirs()
-
         // Nitrite v4 默认使用 SimpleNitriteMapper，无需显式加载 Jackson mapper
-        db = Nitrite.builder()
+        val opened = Nitrite.builder()
             .loadModule(MVStoreModule("config/tauth/auth.db"))
             .openOrCreate()
-
-        repo = db.getRepository(PlayerAuthData::class.java)
+        db = opened
+        return opened.getRepository(PlayerAuthData::class.java)
     }
 
     fun isRegistered(playerName: String): Boolean {
@@ -104,6 +105,34 @@ class PasswordStorage {
         return repo.find(byName(playerName)).firstOrNull()
     }
 
+    /**
+     * 取出已存储哈希的解析结果（iterations / keyBits / salt / 期望哈希），
+     * 供服务端挑战-响应校验使用。未注册或格式损坏返回 null。
+     */
+    fun getHashParams(playerName: String): PasswordHasher.ParsedHash? {
+        val data = repo.find(byName(playerName)).firstOrNull() ?: return null
+        return PasswordHasher.parse(data.passwordHash)
+    }
+
+    /**
+     * 客户端已在本地完成 PBKDF2 并提交 salt:hash 字符串，服务端直接落库。
+     * @return 是否注册成功（已存在则返回 false）。
+     */
+    fun registerWithHash(playerName: String, passwordHash: String): Boolean {
+        if (repo.find(byName(playerName)).firstOrNull() != null) return false
+        repo.insert(PlayerAuthData(
+            playerName = playerName,
+            passwordHash = passwordHash,
+            verified = false,
+            lastLoginType = "offline"
+        ))
+        return true
+    }
+
+    /** 该玩家是否曾被标记为正版验证过（即有过正版登录历史）。 */
+    fun hasPremiumHistory(playerName: String): Boolean =
+        repo.find(byName(playerName)).firstOrNull()?.verified == true
+
     /** 更新 verified 标志和登录类型。 */
     fun updateVerification(playerName: String, verified: Boolean, loginType: String) {
         val data = repo.find(byName(playerName)).firstOrNull() ?: return
@@ -128,26 +157,16 @@ class PasswordStorage {
     private fun byName(name: String): Filter =
         FluentFilter.where("playerName").eq(name)
 
+    /** 用 [AuthConfig] 配置参数生成哈希。算法实现见 [PasswordHasher]。 */
     private fun hashPassword(password: String): String {
-        val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
-        val spec = PBEKeySpec(password.toCharArray(), salt, ITERATIONS, KEY_LENGTH)
-        val hash = SecretKeyFactory.getInstance(ALGORITHM).generateSecret(spec).encoded
-        return "${Base64.getEncoder().encodeToString(salt)}$SALT_SEPARATOR${Base64.getEncoder().encodeToString(hash)}"
+        val saltBytes = AuthConfig.saltBytes.get().coerceIn(LEGACY_SALT_BYTES, 64)
+        val iterations = AuthConfig.iterations.get().coerceAtLeast(1000)
+        val keyBits = AuthConfig.keyLengthBits.get().coerceAtLeast(128)
+        return PasswordHasher.hash(password, saltBytes, iterations, keyBits)
     }
 
-    private fun verifyPassword(input: String, stored: String): Boolean {
-        return try {
-            val parts = stored.split(SALT_SEPARATOR)
-            if (parts.size != 2) return false
-            val salt = Base64.getDecoder().decode(parts[0])
-            val hash = Base64.getDecoder().decode(parts[1])
-            val spec = PBEKeySpec(input.toCharArray(), salt, ITERATIONS, KEY_LENGTH)
-            val inputHash = SecretKeyFactory.getInstance(ALGORITHM).generateSecret(spec).encoded
-            Arrays.equals(hash, inputHash)
-        } catch (_: Exception) {
-            false
-        }
-    }
+    private fun verifyPassword(input: String, stored: String): Boolean =
+        PasswordHasher.verify(input, stored)
 
-    fun close() { db.close() }
+    fun close() { db?.close() }
 }

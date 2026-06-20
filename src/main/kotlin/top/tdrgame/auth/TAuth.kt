@@ -34,7 +34,7 @@ object TAuth {
         // 1. 注册 Forge ModConfig
         AuthConfig.register()
 
-        // 2. 初始化密码存储（Nitrite 数据库）
+        // 2. 仅服务端打开密码数据库（客户端选装时无需 auth.db）
         storage = PasswordStorage()
         TAuthHolder.storage = storage
 

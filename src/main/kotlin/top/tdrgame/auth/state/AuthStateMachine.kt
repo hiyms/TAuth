@@ -9,6 +9,12 @@ import top.tdrgame.auth.config.AuthConfig
  *
  * 负责状态转移、超时检测和密码错误计数。
  * 所有数据仅存于服务端内存 — 重启后清除是预期行为。
+ *
+ * 放行规则（与 TASK 对齐）：
+ * - 正版全新玩家（isPremium=true 且从未注册）→ 永不需要验证，直接放行。
+ * - 任何已验证玩家（isVerified=true）→ 直接放行。涵盖「首次正版登录后永久免验证」
+ *   以及「曾在正版状态下 register、之后离线登录」两种情形。
+ * - 其余情况进入 [AuthState.Pending]，等待 /login 或 /register。
  */
 class AuthStateMachine(
     private val player: ServerPlayer,
@@ -27,8 +33,10 @@ class AuthStateMachine(
     private var remindTick: Int = 0
 
     init {
-        // 正版且已验证 → 直接放行
-        if (isPremium && isVerified) {
+        // 正版全新玩家：从未注册过，本轮为正版登录 → 免验证。
+        // 已验证玩家：无论正版/离线，历史已通过验证 → 免验证。
+        val shouldAutoPass = (isPremium && !isRegistered) || isVerified
+        if (shouldAutoPass) {
             state = AuthState.Authenticated(System.currentTimeMillis())
         }
     }

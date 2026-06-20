@@ -59,30 +59,38 @@ object MigrationService {
         }
     }
 
+    /**
+     * 从 TrueUUID 迁移「已验证为正版」的标记。
+     *
+     * TrueUUID 把已知正版玩家名持久化在 [config/trueuuid-registry.json]，
+     * 结构为 `Map<小写玩家名, {premiumUuid, firstVerifiedAt, ...}>`。
+     * 该模组并未提供 `getKnownPremiumNames()` 之类的公共 API，因此直接读取 JSON。
+     *
+     * 仅对已存在于 TAuth 数据库的玩家回填 verified=true；不会凭空创建密码条目。
+     */
     private fun migrateTrueUUID(storage: PasswordStorage): Boolean {
-        return try {
-            val runtimeClass = Class.forName("cn.alini.trueuuid.server.TrueuuidRuntime")
-            val nameRegistryField = runtimeClass.getDeclaredField("NAME_REGISTRY")
-            val nameRegistry = nameRegistryField.get(null)
-            val knownPremiumNamesMethod = nameRegistry.javaClass.getMethod("getKnownPremiumNames")
-            @Suppress("UNCHECKED_CAST")
-            val premiumNames = knownPremiumNamesMethod.invoke(nameRegistry) as? Set<String> ?: emptySet()
+        val registryFile = File("config/trueuuid-registry.json")
+        if (!registryFile.exists()) return false
 
-            if (premiumNames.isEmpty()) return false
+        return try {
+            val root = com.google.gson.JsonParser.parseReader(registryFile.reader()).asJsonObject
+            if (root.size() == 0) return false
 
             var count = 0
-            premiumNames.forEach { name ->
-                val existing = storage.get(name)
-                if (existing != null) {
-                    storage.updateVerification(name, verified = true, loginType = "online")
-                    count++
+            root.keySet().forEach { name ->
+                // 仅当条目确实记录了 premiumUuid 才视为正版
+                val entry = root.getAsJsonObject(name)
+                if (entry.has("premiumUuid")) {
+                    val existing = storage.get(name)
+                    if (existing != null) {
+                        storage.updateVerification(name, verified = true, loginType = "online")
+                        count++
+                    }
                 }
             }
 
             logger.info("Migrated $count TrueUUID verified flags.")
             count > 0
-        } catch (_: ClassNotFoundException) {
-            false
         } catch (e: Exception) {
             logger.error("Failed to migrate TrueUUID data", e)
             false

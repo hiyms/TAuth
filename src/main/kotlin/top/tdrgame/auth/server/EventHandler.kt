@@ -20,8 +20,11 @@ import top.tdrgame.auth.config.AuthConfig
 @Mod.EventBusSubscriber
 object EventHandler {
 
-    /** 内存级背包备份。Key 为玩家名，Value 为 NBT ListTag。 */
-    private val inventoryBackups = mutableMapOf<String, net.minecraft.nbt.ListTag>()
+    /**
+     * 背包备份标记。Key 为玩家名，表示该玩家当前正处于「未认证 + 已清空背包」状态。
+     * 实际数据落盘在 [InventoryBackupStore]，内存集合仅用于快速判断与登出清理。
+     */
+    private val inventoryBackups = mutableSetOf<String>()
 
     @SubscribeEvent
     @JvmStatic
@@ -30,26 +33,27 @@ object EventHandler {
         val player = event.entity as? ServerPlayer ?: return
 
         val name = player.name.string
-        val isPremium = tryDetectPremium(name)
+        val isPremium = TrueUuidBridge.isPremium(name)
         val storage = TAuthHolder.storage
         val data = storage.get(name)
         val isVerified = data?.verified == true
         val isRegistered = data != null
 
-        // 死亡后直接退出再进入：强制重生到出生点
+        // 死亡后直接退出服务器且未重生就再次进入：先自动重生到出生点，再要求登录。
+        // respawnPosition 可能为 null（无床），回退到世界共享出生点。
         if (player.isDeadOrDying) {
-            val spawnPos = player.respawnPosition
-                ?: player.serverLevel().sharedSpawnPos
+            val spawnPos = player.respawnPosition ?: player.serverLevel().sharedSpawnPos
             player.teleportTo(spawnPos.x.toDouble(), spawnPos.y.toDouble(), spawnPos.z.toDouble())
             player.health = player.maxHealth
         }
 
         AuthManager.onPlayerJoin(player, isPremium, isVerified, isRegistered)
 
-        // 未认证 → 清空背包
+        // 未认证 → 备份并清空背包（落盘，防止服务端崩溃导致丢背包）
         if (!AuthManager.isAuthenticated(player)) {
             val backup = player.inventory.save(net.minecraft.nbt.ListTag())
-            inventoryBackups[name] = backup
+            InventoryBackupStore.save(name, backup)
+            inventoryBackups.add(name)
             player.inventory.clearContent()
         }
     }
@@ -59,6 +63,8 @@ object EventHandler {
     fun onPlayerLogout(event: PlayerEvent.PlayerLoggedOutEvent) {
         if (!AuthConfig.enabled.get()) return
         val player = event.entity as? ServerPlayer ?: return
+        // 下线时若仍未认证，把背包直接还原回玩家对象并非必须；
+        // 这里清理内存标记，磁盘备份保留以备其下次上线能立即恢复（认证通过后）。
         inventoryBackups.remove(player.name.string)
         AuthManager.onPlayerLeave(player)
     }
@@ -143,25 +149,15 @@ object EventHandler {
         }
     }
 
-    /** 认证通过后恢复玩家背包。 */
+    /** 认证通过后恢复玩家背包（从磁盘备份读取）。 */
     fun restoreInventory(player: ServerPlayer) {
         val name = player.name.string
-        val backup = inventoryBackups.remove(name) ?: return
+        inventoryBackups.remove(name)
+        val backup = InventoryBackupStore.loadAndConsume(name) ?: return
         player.inventory.load(backup)
         player.inventoryMenu.broadcastChanges()
         player.containerMenu.broadcastChanges()
         player.sendSystemMessage(Component.literal("§a背包已恢复。"))
-    }
-
-    /** 反射调用 TrueUUID API 检测正版状态。 */
-    private fun tryDetectPremium(name: String): Boolean {
-        return try {
-            val apiClass = Class.forName("cn.alini.trueuuid.api.TrueuuidApi")
-            val method = apiClass.getMethod("isPremium", String::class.java)
-            method.invoke(null, name.lowercase()) as? Boolean ?: false
-        } catch (_: Exception) {
-            false
-        }
     }
 }
 

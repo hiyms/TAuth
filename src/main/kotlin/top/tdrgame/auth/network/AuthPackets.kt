@@ -2,13 +2,36 @@ package top.tdrgame.auth.network
 
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerPlayer
 import net.minecraftforge.network.NetworkEvent
 import net.minecraftforge.network.NetworkRegistry
+import net.minecraftforge.network.PacketDistributor
 import net.minecraftforge.network.simple.SimpleChannel
+import top.tdrgame.auth.client.ClientAuthHandler
+import top.tdrgame.auth.server.AuthManager
+import top.tdrgame.auth.server.CommandHandler
+import java.security.MessageDigest
 import java.util.function.Supplier
 
 /**
- * 所有网络包定义。挑战-响应协议。
+ * 挑战-响应认证协议。
+ *
+ * 核心要求：PBKDF2 哈希计算在客户端完成（见 TASK「哈希计算移到客户端」）。
+ *
+ * 登录流程：
+ *  1. 客户端 → 服务端 [LoginRequestPacket]（mode=login，玩家名）
+ *  2. 服务端取出该玩家存储的 salt + 哈希参数，生成随机 challenge
+ *     → 客户端 [ChallengePacket]
+ *  3. 客户端用输入密码本地执行 PBKDF2 得到 key，再 key||challenge 做 SHA-256
+ *     → 服务端 [ChallengeResponsePacket]
+ *  4. 服务端用「存储的哈希值 || challenge」做同样 SHA-256 比对，回 [LoginResultPacket]
+ *
+ * 注册流程：
+ *  1. 客户端本地执行 PBKDF2 生成 salt:hash → 服务端 [RegisterSubmitPacket]
+ *  2. 服务端写入数据库，回 [LoginResultPacket]
+ *
+ * 自动登录：客户端缓存了上次的「password 派生 key」，登录流程的第 1 步
+ * 仍由客户端发起，只是密码来源是缓存而非输入框。
  */
 object AuthPackets {
 
@@ -22,83 +45,158 @@ object AuthPackets {
 
     fun register() {
         var id = 0
+        // 客户端 → 服务端：请求登录挑战
         CHANNEL.registerMessage(id++, LoginRequestPacket::class.java,
             LoginRequestPacket::encode, LoginRequestPacket::decode, LoginRequestPacket::handle)
-        CHANNEL.registerMessage(id++, ChallengeRequestPacket::class.java,
-            ChallengeRequestPacket::encode, ChallengeRequestPacket::decode, ChallengeRequestPacket::handle)
+        // 服务端 → 客户端：下发挑战（salt + 哈希参数 + nonce）
         CHANNEL.registerMessage(id++, ChallengePacket::class.java,
             ChallengePacket::encode, ChallengePacket::decode, ChallengePacket::handle)
+        // 客户端 → 服务端：挑战响应
         CHANNEL.registerMessage(id++, ChallengeResponsePacket::class.java,
             ChallengeResponsePacket::encode, ChallengeResponsePacket::decode, ChallengeResponsePacket::handle)
+        // 客户端 → 服务端：注册提交（已本地哈希）
+        CHANNEL.registerMessage(id++, RegisterSubmitPacket::class.java,
+            RegisterSubmitPacket::encode, RegisterSubmitPacket::decode, RegisterSubmitPacket::handle)
+        // 服务端 → 客户端：结果
         CHANNEL.registerMessage(id++, LoginResultPacket::class.java,
             LoginResultPacket::encode, LoginResultPacket::decode, LoginResultPacket::handle)
     }
 
-    class LoginRequestPacket(private val mode: String = "login") {
-        constructor(buf: FriendlyByteBuf) : this(buf.readUtf())
-        fun encode(buf: FriendlyByteBuf) { buf.writeUtf(mode) }
+    /** 客户端 → 服务端：发起登录请求。 */
+    class LoginRequestPacket(val mode: String, val playerName: String) {
+        constructor(buf: FriendlyByteBuf) : this(buf.readUtf(16), buf.readUtf(64))
+        fun encode(buf: FriendlyByteBuf) {
+            buf.writeUtf(mode)
+            buf.writeUtf(playerName)
+        }
+        /** 服务端处理：生成挑战并回发。 */
         fun handle(ctx: Supplier<NetworkEvent.Context>) {
-            ctx.get().enqueueWork { /* Client-side: pop UI */ }
-            ctx.get().packetHandled = true
+            val context = ctx.get()
+            context.enqueueWork {
+                val player = context.sender ?: return@enqueueWork
+                CommandHandler.handleLoginRequest(player, this)
+            }
+            context.packetHandled = true
         }
         companion object {
             fun decode(buf: FriendlyByteBuf) = LoginRequestPacket(buf)
         }
     }
 
-    class ChallengeRequestPacket {
-        fun encode(buf: FriendlyByteBuf) {}
-        fun handle(ctx: Supplier<NetworkEvent.Context>) {
-            ctx.get().enqueueWork { /* Server-side: generate challenge */ }
-            ctx.get().packetHandled = true
-        }
-        companion object {
-            fun decode(buf: FriendlyByteBuf) = ChallengeRequestPacket()
-        }
-    }
-
+    /** 服务端 → 客户端：挑战包。 */
     class ChallengePacket(
-        private val challenge: Long,
-        private val salt: ByteArray
+        val challenge: Long,
+        val salt: ByteArray,
+        val iterations: Int,
+        val keyBits: Int
     ) {
-        constructor(buf: FriendlyByteBuf) : this(buf.readLong(), buf.readByteArray())
+        constructor(buf: FriendlyByteBuf) : this(
+            buf.readLong(), buf.readByteArray(), buf.readVarInt(), buf.readVarInt()
+        )
         fun encode(buf: FriendlyByteBuf) {
             buf.writeLong(challenge)
             buf.writeByteArray(salt)
+            buf.writeVarInt(iterations)
+            buf.writeVarInt(keyBits)
         }
+        /** 客户端处理：用当前输入（或缓存）的密码本地计算响应。 */
         fun handle(ctx: Supplier<NetworkEvent.Context>) {
-            ctx.get().enqueueWork { /* Client-side: compute response */ }
-            ctx.get().packetHandled = true
+            val context = ctx.get()
+            context.enqueueWork { ClientAuthHandler.onChallenge(this) }
+            context.packetHandled = true
         }
         companion object {
             fun decode(buf: FriendlyByteBuf) = ChallengePacket(buf)
         }
     }
 
-    class ChallengeResponsePacket(private val responseHash: ByteArray) {
+    /** 客户端 → 服务端：挑战响应。 */
+    class ChallengeResponsePacket(val response: ByteArray) {
         constructor(buf: FriendlyByteBuf) : this(buf.readByteArray())
-        fun encode(buf: FriendlyByteBuf) { buf.writeByteArray(responseHash) }
+        fun encode(buf: FriendlyByteBuf) { buf.writeByteArray(response) }
+        /** 服务端处理：校验响应并回发结果。 */
         fun handle(ctx: Supplier<NetworkEvent.Context>) {
-            ctx.get().enqueueWork { /* Server-side: verify */ }
-            ctx.get().packetHandled = true
+            val context = ctx.get()
+            context.enqueueWork {
+                val player = context.sender ?: return@enqueueWork
+                CommandHandler.handleChallengeResponse(player, this)
+            }
+            context.packetHandled = true
         }
         companion object {
             fun decode(buf: FriendlyByteBuf) = ChallengeResponsePacket(buf)
         }
     }
 
-    class LoginResultPacket(private val success: Boolean, private val message: String = "") {
-        constructor(buf: FriendlyByteBuf) : this(buf.readBoolean(), buf.readUtf())
+    /** 客户端 → 服务端：注册提交（passwordHash 已在客户端本地计算）。 */
+    class RegisterSubmitPacket(
+        val playerName: String,
+        val passwordHash: String,
+        val isPremium: Boolean
+    ) {
+        constructor(buf: FriendlyByteBuf) : this(buf.readUtf(64), buf.readUtf(512), buf.readBoolean())
+        fun encode(buf: FriendlyByteBuf) {
+            buf.writeUtf(playerName)
+            buf.writeUtf(passwordHash)
+            buf.writeBoolean(isPremium)
+        }
+        /** 服务端处理：写入数据库并回发结果。 */
+        fun handle(ctx: Supplier<NetworkEvent.Context>) {
+            val context = ctx.get()
+            context.enqueueWork {
+                val player = context.sender ?: return@enqueueWork
+                CommandHandler.handleRegisterSubmit(player, this)
+            }
+            context.packetHandled = true
+        }
+        companion object {
+            fun decode(buf: FriendlyByteBuf) = RegisterSubmitPacket(buf)
+        }
+    }
+
+    /** 服务端 → 客户端：登录/注册结果。 */
+    class LoginResultPacket(val success: Boolean, val message: String, val rememberKey: ByteArray?) {
+        constructor(buf: FriendlyByteBuf) : this(
+            buf.readBoolean(), buf.readUtf(256),
+            if (buf.readBoolean()) buf.readByteArray() else null
+        )
         fun encode(buf: FriendlyByteBuf) {
             buf.writeBoolean(success)
             buf.writeUtf(message)
+            if (rememberKey != null) {
+                buf.writeBoolean(true)
+                buf.writeByteArray(rememberKey)
+            } else {
+                buf.writeBoolean(false)
+            }
         }
+        /** 客户端处理：更新 UI 与自动登录缓存。 */
         fun handle(ctx: Supplier<NetworkEvent.Context>) {
-            ctx.get().enqueueWork { /* Client-side: close UI */ }
-            ctx.get().packetHandled = true
+            val context = ctx.get()
+            context.enqueueWork { ClientAuthHandler.onLoginResult(this) }
+            context.packetHandled = true
         }
         companion object {
             fun decode(buf: FriendlyByteBuf) = LoginResultPacket(buf)
         }
+    }
+
+    /** 工具：计算 PBKDF2 派生 key 与 challenge 的 SHA-256。客户端与服务端共用。 */
+    internal fun challengeResponse(derivedKey: ByteArray, challenge: Long): ByteArray {
+        val md = MessageDigest.getInstance("SHA-256")
+        md.update(derivedKey)
+        val buf = java.nio.ByteBuffer.allocate(8).putLong(challenge).array()
+        md.update(buf)
+        return md.digest()
+    }
+
+    /** 向指定玩家发包的便捷方法。 */
+    fun sendToPlayer(player: ServerPlayer, packet: Any) {
+        CHANNEL.send(PacketDistributor.PLAYER.with { player }, packet)
+    }
+
+    /** 客户端向服务端发包的便捷方法。 */
+    fun sendToServer(packet: Any) {
+        CHANNEL.sendToServer(packet)
     }
 }

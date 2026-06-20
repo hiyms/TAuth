@@ -1,72 +1,55 @@
 package top.tdrgame.auth.server
 
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import java.io.File
-import java.security.MessageDigest
 import java.security.SecureRandom
-import java.security.spec.InvalidKeySpecException
 import java.util.*
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 import kotlin.test.*
 
 /**
- * 测试 PBKDF2 密码哈希的正确性——与 offlineauth 兼容。
+ * 密码哈希测试。
  *
- * 这些测试不依赖 Minecraft/Forge 运行时，可以直接运行。
+ * 直接覆盖生产实现 [PasswordHasher]（而非复制粘贴一份算法副本），
+ * 验证 PBKDF2 哈希/校验、salt 随机性、格式解析与 offlineauth 兼容性。
+ * 这些测试不依赖 Minecraft/Forge 运行时，可直接运行。
  */
 class PasswordStorageTest {
 
-    companion object {
-        private const val ALGORITHM = "PBKDF2WithHmacSHA256"
-        private const val ITERATIONS = 10000
-        private const val KEY_LENGTH = 256
-        private const val SALT_BYTES = 16
-        private const val SALT_SEPARATOR = ":"
-    }
-
-    @TempDir
-    lateinit var tempDir: File
-
     @Test
-    fun `hash produces salt separator hash format`() {
-        val password = "testPassword123"
-        val hash = hashPassword(password)
-
-        // 格式：Base64(salt):Base64(hash)
-        val parts = hash.split(SALT_SEPARATOR)
-        assertEquals(2, parts.size)
-        // Salt 部分应该是有效的 Base64（16 字节 → 24 字符），hash 非空
-        assertTrue(parts[0].length >= 20, "Salt too short: ${parts[0].length}")
-        assertTrue(parts[1].isNotEmpty())
+    fun `hash produces v1 five-segment format`() {
+        val hash = PasswordHasher.hash("testPassword123", 16, 10000, 256)
+        // v1:<iterations>:<keyBits>:<saltB64>:<hashB64>
+        val parts = hash.split(PasswordHasher.SALT_SEPARATOR)
+        assertEquals(5, parts.size)
+        assertEquals("v1", parts[0])
+        assertEquals("10000", parts[1])
+        assertEquals("256", parts[2])
+        // 16 字节 salt → Base64 约 24 字符；hash(256bit=32B) → 约 44 字符
+        assertTrue(parts[3].length >= 20, "Salt too short: ${parts[3].length}")
+        assertTrue(parts[4].isNotEmpty())
     }
 
     @Test
     fun `same password produces different hashes due to random salt`() {
-        val password = "testPassword"
-        val hash1 = hashPassword(password)
-        val hash2 = hashPassword(password)
+        val hash1 = PasswordHasher.hash("testPassword", 16, 10000, 256)
+        val hash2 = PasswordHasher.hash("testPassword", 16, 10000, 256)
 
         assertNotEquals(hash1, hash2, "Each hash should have unique salt")
-        assertTrue(verifyPassword(password, hash1))
-        assertTrue(verifyPassword(password, hash2))
+        assertTrue(PasswordHasher.verify("testPassword", hash1))
+        assertTrue(PasswordHasher.verify("testPassword", hash2))
     }
 
     @Test
     fun `correct password verification succeeds`() {
-        val password = "securePassword123!"
-        val hash = hashPassword(password)
-
-        assertTrue(verifyPassword(password, hash))
+        val hash = PasswordHasher.hash("securePassword123!", 16, 10000, 256)
+        assertTrue(PasswordHasher.verify("securePassword123!", hash))
     }
 
     @Test
     fun `wrong password verification fails`() {
-        val password = "correctPassword"
-        val hash = hashPassword(password)
-
-        assertFalse(verifyPassword("wrongPassword", hash))
+        val hash = PasswordHasher.hash("correctPassword", 16, 10000, 256)
+        assertFalse(PasswordHasher.verify("wrongPassword", hash))
     }
 
     @Test
@@ -81,56 +64,52 @@ class PasswordStorageTest {
         )
 
         for (password in passwords) {
-            val hash = hashPassword(password)
-            assertTrue(verifyPassword(password, hash), "Failed for password: '${password.take(20)}...'")
-            assertFalse(verifyPassword(password + "x", hash), "Should reject wrong password for: '${password.take(20)}...'")
+            val hash = PasswordHasher.hash(password, 16, 10000, 256)
+            assertTrue(PasswordHasher.verify(password, hash),
+                "Failed for password: '${password.take(20)}...'")
+            assertFalse(PasswordHasher.verify(password + "x", hash),
+                "Should reject wrong password for: '${password.take(20)}...'")
         }
     }
 
     @Test
     fun `verification fails on malformed stored hash`() {
-        assertFalse(verifyPassword("anything", "no-separator"))
-        assertFalse(verifyPassword("anything", "not:valid:base64"))
-        assertFalse(verifyPassword("anything", ""))
+        assertFalse(PasswordHasher.verify("anything", "no-separator"))
+        assertFalse(PasswordHasher.verify("anything", "not:valid:base64"))
+        assertFalse(PasswordHasher.verify("anything", ""))
+        // 前缀对但段数错
+        assertFalse(PasswordHasher.verify("anything", "v1:10000:256:onlyone"))
     }
 
     @Test
-    fun `offlineauth compatibility - same algorithm and format`() {
-        // offlineauth 使用相同的算法参数和格式
-        // 此测试确保 TAuth 的实现与 offlineauth 存储格式兼容
+    fun `configurable parameters are honored`() {
+        // 不同迭代次数应产生可校验的哈希
+        val hash = PasswordHasher.hash("pw", 32, 20000, 512)
+        val parsed = PasswordHasher.parse(hash)
+        assertNotNull(parsed)
+        assertEquals(20000, parsed.iterations)
+        assertEquals(512, parsed.keyLengthBits)
+        assertEquals(32, parsed.salt.size)
+        assertTrue(PasswordHasher.verify("pw", hash))
+    }
+
+    @Test
+    fun `offlineauth legacy two-segment format is verified with default params`() {
+        // 用 offlineauth 完全一致的算法/格式手工构造一条 salt:hash 记录，
+        // 验证 PasswordHasher 能解析并校验（迁移兼容性）。
         val password = "offlineAuthTest123"
+        val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val spec = PBEKeySpec(password.toCharArray(), salt, 10000, 256)
+        val hash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        val legacy = "${Base64.getEncoder().encodeToString(salt)}:${Base64.getEncoder().encodeToString(hash)}"
 
-        // 使用 PBKDF2WithHmacSHA256, ITERATIONS=10000, KEY_LENGTH=256
-        val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
-        val spec = PBEKeySpec(password.toCharArray(), salt, ITERATIONS, KEY_LENGTH)
-        val hash = SecretKeyFactory.getInstance(ALGORITHM).generateSecret(spec).encoded
-
-        val storedFormat = "${Base64.getEncoder().encodeToString(salt)}$SALT_SEPARATOR${Base64.getEncoder().encodeToString(hash)}"
-
-        // 应该能用自己的 verifyPassword 验证
-        assertTrue(verifyPassword(password, storedFormat))
-    }
-
-    // ── 与 PasswordStorage 中完全相同的实现 ──
-
-    private fun hashPassword(password: String): String {
-        val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
-        val spec = PBEKeySpec(password.toCharArray(), salt, ITERATIONS, KEY_LENGTH)
-        val hash = SecretKeyFactory.getInstance(ALGORITHM).generateSecret(spec).encoded
-        return "${Base64.getEncoder().encodeToString(salt)}$SALT_SEPARATOR${Base64.getEncoder().encodeToString(hash)}"
-    }
-
-    private fun verifyPassword(input: String, stored: String): Boolean {
-        return try {
-            val parts = stored.split(SALT_SEPARATOR)
-            if (parts.size != 2) return false
-            val salt = Base64.getDecoder().decode(parts[0])
-            val hash = Base64.getDecoder().decode(parts[1])
-            val spec = PBEKeySpec(input.toCharArray(), salt, ITERATIONS, KEY_LENGTH)
-            val inputHash = SecretKeyFactory.getInstance(ALGORITHM).generateSecret(spec).encoded
-            Arrays.equals(hash, inputHash)
-        } catch (_: Exception) {
-            false
-        }
+        assertTrue(PasswordHasher.verify(password, legacy),
+            "Legacy offlineauth salt:hash must verify")
+        // 解析应回退到默认参数
+        val parsed = PasswordHasher.parse(legacy)
+        assertNotNull(parsed)
+        assertEquals(PasswordHasher.LEGACY_ITERATIONS, parsed.iterations)
+        assertEquals(PasswordHasher.LEGACY_KEY_LENGTH, parsed.keyLengthBits)
+        assertFalse(PasswordHasher.verify("wrongPassword", legacy))
     }
 }
