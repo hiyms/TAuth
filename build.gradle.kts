@@ -85,6 +85,7 @@ repositories {
 dependencies {
     minecraft("net.minecraftforge:forge:$mcVer-$forgeVer")
     implementation("thedarkcolour:kotlinforforge:$kffVer")
+    annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
 
     // Nitrite v4
     implementation(platform("org.dizitart:nitrite-bom:4.3.2"))
