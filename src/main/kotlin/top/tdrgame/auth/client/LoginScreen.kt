@@ -15,8 +15,6 @@ import net.minecraftforge.api.distmarker.OnlyIn
  * LDLib 登录界面。
  *
  * 布局：标题 → 密码输入框 → [登录] [注册] 按钮。
- * 仅客户端构造；输入框 / 按钮均为客户端组件（setClientSideWidget），
- * 密码明文不通过网络同步，提交后由 [ClientAuthHandler] 本地 PBKDF2 + 挑战响应。
  */
 @OnlyIn(Dist.CLIENT)
 object LoginScreen {
@@ -24,27 +22,26 @@ object LoginScreen {
     /** 当前输入的密码（由输入框 responder 实时回写）。 */
     private var currentPassword: String = ""
 
-    fun create(): ModularUI {
+    fun create(message: String = ""): ModularUI {
         currentPassword = ""
-        val group = WidgetGroup(0, 0, 176, 100).setClientSideWidget()
+        val group = WidgetGroup(0, 0, 176, 118).setClientSideWidget()
 
-        // 标题
         group.addWidget(LabelWidget(8, 8, "§6§lTAuth 登录"))
+        if (message.isNotEmpty()) {
+            group.addWidget(LabelWidget(8, 22, "§c${message.take(24)}"))
+        }
 
-        // 密码输入框：supplier 给初值，responder 回写本地变量
-        val passwordField = TextFieldWidget(8, 30, 160, 16, { currentPassword }, { currentPassword = it })
+        val passwordField = TextFieldWidget(8, 42, 160, 16, { currentPassword }, { currentPassword = it })
             .setClientSideWidget()
         group.addWidget(passwordField)
 
-        // 登录按钮：TextTexture 渲染文字
-        val loginBtn = ButtonWidget(8, 55, 70, 16,
+        val loginBtn = ButtonWidget(8, 68, 70, 16,
             TextTexture("登录"),
             { _ -> ClientAuthHandler.submitPassword(currentPassword) })
             .setClientSideWidget()
         group.addWidget(loginBtn)
 
-        // 注册按钮：切换到注册界面
-        val registerBtn = ButtonWidget(88, 55, 70, 16,
+        val registerBtn = ButtonWidget(88, 68, 70, 16,
             TextTexture("注册"),
             { _ -> ClientAuthHandler.showRegisterScreen() })
             .setClientSideWidget()

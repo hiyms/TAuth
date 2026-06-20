@@ -8,6 +8,7 @@ version="${modVersion}"
 displayName="${modName}"
 authors="${modAuthors}"
 description='''${modDescription}'''
+displayTest="IGNORE_ALL_VERSION"
 [[dependencies.${modId}]]
     modId="forge"
     mandatory=true
@@ -22,7 +23,7 @@ description='''${modDescription}'''
     side="BOTH"
 [[dependencies.${modId}]]
     modId="ldlib"
-    mandatory=false
+    mandatory=true
     versionRange="[1.0,2.0)"
     ordering="NONE"
     side="CLIENT"

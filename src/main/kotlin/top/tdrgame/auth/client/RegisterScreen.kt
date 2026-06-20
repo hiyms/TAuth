@@ -15,7 +15,7 @@ import net.minecraftforge.api.distmarker.OnlyIn
  * LDLib 注册界面。
  *
  * 布局：标题 → 密码输入框 → 确认密码输入框 → [注册] [返回] 按钮。
- * 提交后由 [ClientAuthHandler] 本地 PBKDF2 生成 salt:hash 并发送给服务端。
+ * 提交后由 [ClientAuthHandler] 本地 PBKDF2 生成哈希并发送给服务端。
  */
 @OnlyIn(Dist.CLIENT)
 object RegisterScreen {
@@ -23,28 +23,31 @@ object RegisterScreen {
     private var currentPassword: String = ""
     private var currentConfirm: String = ""
 
-    fun create(): ModularUI {
+    fun create(message: String = ""): ModularUI {
         currentPassword = ""
         currentConfirm = ""
-        val group = WidgetGroup(0, 0, 176, 120).setClientSideWidget()
+        val group = WidgetGroup(0, 0, 176, 136).setClientSideWidget()
 
         group.addWidget(LabelWidget(8, 8, "§6§lTAuth 注册"))
+        if (message.isNotEmpty()) {
+            group.addWidget(LabelWidget(8, 22, "§c${message.take(24)}"))
+        }
 
-        val passwordField = TextFieldWidget(8, 30, 160, 16, { currentPassword }, { currentPassword = it })
+        val passwordField = TextFieldWidget(8, 42, 160, 16, { currentPassword }, { currentPassword = it })
             .setClientSideWidget()
         group.addWidget(passwordField)
 
-        val confirmField = TextFieldWidget(8, 52, 160, 16, { currentConfirm }, { currentConfirm = it })
+        val confirmField = TextFieldWidget(8, 64, 160, 16, { currentConfirm }, { currentConfirm = it })
             .setClientSideWidget()
         group.addWidget(confirmField)
 
-        val registerBtn = ButtonWidget(8, 78, 70, 16,
+        val registerBtn = ButtonWidget(8, 90, 70, 16,
             TextTexture("注册"),
             { _ -> ClientAuthHandler.submitRegister(currentPassword, currentConfirm) })
             .setClientSideWidget()
         group.addWidget(registerBtn)
 
-        val backBtn = ButtonWidget(88, 78, 70, 16,
+        val backBtn = ButtonWidget(88, 90, 70, 16,
             TextTexture("返回"),
             { _ -> ClientAuthHandler.showLoginScreenFromRegister() })
             .setClientSideWidget()
