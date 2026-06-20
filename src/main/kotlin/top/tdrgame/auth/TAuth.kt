@@ -1,0 +1,65 @@
+package top.tdrgame.auth
+
+import net.minecraftforge.fml.common.Mod
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
+import net.minecraftforge.fml.event.lifecycle.FMLDedicatedServerSetupEvent
+import org.apache.logging.log4j.LogManager
+import thedarkcolour.kotlinforforge.forge.MOD_BUS
+import top.tdrgame.auth.config.AuthConfig
+import top.tdrgame.auth.network.AuthPackets
+import top.tdrgame.auth.server.MigrationService
+import top.tdrgame.auth.server.PasswordStorage
+import top.tdrgame.auth.server.TAuthHolder
+
+/**
+ * TAuth — 服务器端离线玩家认证模组。
+ *
+ * 服务器必装，客户端选装。
+ * 为离线（盗版）玩家提供 PBKDF2 密码验证保护。
+ *
+ * @see <a href="https://github.com/tdrgame/TAuth">GitHub</a>
+ */
+@Mod(TAuth.ID)
+object TAuth {
+
+    const val ID = "tauth"
+    val LOGGER = LogManager.getLogger(ID)
+
+    lateinit var storage: PasswordStorage
+        private set
+
+    init {
+        LOGGER.info("TAuth initializing...")
+
+        // 1. 注册 Forge ModConfig
+        AuthConfig.register()
+
+        // 2. 初始化密码存储（Nitrite 数据库）
+        storage = PasswordStorage()
+        TAuthHolder.storage = storage
+
+        // 3. 注册网络包
+        AuthPackets.register()
+
+        // 4. 注册事件总线
+        MOD_BUS.register(this)
+    }
+
+    @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
+    object ModEvents {
+
+        @JvmStatic
+        @net.minecraftforge.eventbus.api.SubscribeEvent
+        fun onCommonSetup(event: FMLCommonSetupEvent) {
+            event.enqueueWork {
+                MigrationService.runIfNeeded(storage)
+            }
+        }
+
+        @JvmStatic
+        @net.minecraftforge.eventbus.api.SubscribeEvent
+        fun onServerSetup(event: FMLDedicatedServerSetupEvent) {
+            LOGGER.info("TAuth server-side initialized. Auth enabled: {}", AuthConfig.enabled.get())
+        }
+    }
+}

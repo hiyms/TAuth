@@ -1,0 +1,13 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "top.tdrgame.auth.mixin",
+    "compatibilityLevel": "JAVA_17",
+    "refmap": "tauth.mixins.refmap.json",
+    "mixins": [
+        "CommandMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
+}

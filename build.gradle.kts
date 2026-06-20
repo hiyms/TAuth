@@ -87,13 +87,13 @@ dependencies {
     implementation("thedarkcolour:kotlinforforge:$kffVer")
 
     // Nitrite v4
-    implementation(platform("org.dizitart:nitrite-bom:4.4.1"))
+    implementation(platform("org.dizitart:nitrite-bom:4.3.2"))
     implementation("org.dizitart:nitrite")
-    implementation("org.dizitart:nitrite-mvstore-adapter")
-    implementation("org.dizitart:potassium-nitrite")
+    implementation("org.dizitart:nitrite-mvstore-adapter:4.3.2")
+    implementation("org.dizitart:potassium-nitrite:3.4.0")
 
-    // LDLib client UI
-    compileOnly("com.lowdragmc.ldlib:ldlib-forge-1.20.1:1.0.38")
+    // LDLib client UI — TLS issues with lowdragmc maven
+    // compileOnly("com.lowdragmc.ldlib:ldlib-forge-1.20.1:1.0.38")
 
     // TrueUUID premium detection API
     compileOnly(files("libs/TrueUUID.jar"))
