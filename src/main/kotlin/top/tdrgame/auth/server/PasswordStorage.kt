@@ -12,18 +12,21 @@ import top.tdrgame.auth.config.AuthConfig
  */
 data class PlayerAuthData(
     /** 主键：玩家名（大小写按游戏内实际名称存储）。 */
-    val playerName: String,
+    var playerName: String,
     /** PBKDF2 哈希结果。新条目为 "v1:iter:keyBits:saltB64:hashB64"；迁移自 offlineauth 的为 "saltB64:hashB64"。 */
-    val passwordHash: String,
+    var passwordHash: String,
     /** 是否已证明拥有正版账号。true 时仅正版进入可免验证，离线进入仍需要 /login。 */
-    val verified: Boolean = false,
+    var verified: Boolean = false,
     /** 上次登录类型："online" 或 "offline"，null 表示从未登录过。 */
-    val lastLoginType: String? = null,
+    var lastLoginType: String? = null,
     /** 客户端自动登录绑定的机器 ID。 */
-    val autoLoginMachineId: String? = null,
+    var autoLoginMachineId: String? = null,
     /** 客户端自动登录绑定的上次来源 IP（服务端观察值）。 */
-    val autoLoginIp: String? = null
-)
+    var autoLoginIp: String? = null
+) {
+    /** Nitrite SimpleNitriteMapper needs a Java-visible no-arg constructor. */
+    constructor() : this("", "", false, null, null, null)
+}
 
 /**
  * 密码持久化存储，封装 Nitrite v4 的 CRUD 操作。

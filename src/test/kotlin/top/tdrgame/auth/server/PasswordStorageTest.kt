@@ -17,6 +17,17 @@ import kotlin.test.*
 class PasswordStorageTest {
 
     @Test
+    fun `player auth data has Java visible no arg constructor for Nitrite`() {
+        val instance = PlayerAuthData::class.java.getDeclaredConstructor().newInstance()
+        assertEquals("", instance.playerName)
+        assertEquals("", instance.passwordHash)
+        instance.playerName = "Player"
+        instance.passwordHash = "hash"
+        assertEquals("Player", instance.playerName)
+        assertEquals("hash", instance.passwordHash)
+    }
+
+    @Test
     fun `hash produces v1 five-segment format`() {
         val hash = PasswordHasher.hash("testPassword123", 16, 10000, 256)
         val parts = hash.split(PasswordHasher.SALT_SEPARATOR)
