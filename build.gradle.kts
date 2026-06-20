@@ -93,11 +93,16 @@ dependencies {
     implementation(platform("org.dizitart:nitrite-bom:4.3.2"))
     implementation("org.dizitart:nitrite")
     implementation("org.dizitart:nitrite-mvstore-adapter:4.3.2")
-    jarJar("org.dizitart:nitrite:[4.3.2,4.4)")
-    jarJar("org.dizitart:nitrite-mvstore-adapter:[4.3.2,4.4)")
+    jarJar("org.dizitart:nitrite:[4.3.2,4.4)") {
+        exclude(group = "org.slf4j", module = "slf4j-api")
+        exclude(group = "commons-codec", module = "commons-codec")
+    }
+    jarJar("org.dizitart:nitrite-mvstore-adapter:[4.3.2,4.4)") {
+        exclude(group = "org.slf4j", module = "slf4j-api")
+        exclude(group = "commons-codec", module = "commons-codec")
+    }
     jarJar("com.h2database:h2-mvstore:[2.3.232,2.4)")
     jarJar("org.jasypt:jasypt:[1.9.3,2.0)")
-    jarJar("commons-codec:commons-codec:[1.18.0,1.18.1)")
 
     // LDLib client UI — from firstdark.dev snapshots maven
     compileOnly("com.lowdragmc.ldlib:ldlib-forge-1.20.1:1.0.50")
