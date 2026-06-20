@@ -3,10 +3,8 @@ package top.tdrgame.auth.mixin;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.network.chat.Component;
 import net.minecraftforge.server.ServerLifecycleHooks;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -25,9 +23,6 @@ import top.tdrgame.auth.server.AuthManager;
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class ServerGamePacketMixin {
 
-    @Shadow
-    public ServerPlayer player;
-
     @Inject(
         method = "handleMovePlayer",
         at = @At("HEAD"),
@@ -41,10 +36,12 @@ public abstract class ServerGamePacketMixin {
         if (ServerLifecycleHooks.getCurrentServer() == null) {
             return;
         }
-        if (this.player == null) {
+
+        ServerPlayer player = ((ServerGamePacketListenerImpl) (Object) this).getPlayer();
+        if (player == null) {
             return;
         }
-        if (!AuthManager.INSTANCE.isAuthenticated(this.player)) {
+        if (!AuthManager.INSTANCE.isAuthenticated(player)) {
             // 仅当玩家试图改变位置或朝向时取消。纯 onGround 心跳包保留，
             // 以维持连接活性。
             if (packet.hasPosition() || packet.hasRotation()) {
