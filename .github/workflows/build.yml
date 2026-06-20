@@ -20,3 +20,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
       - name: Build with Gradle
         run: ./gradlew build
+      - name: Prepare artifact
+        run: |
+          VERSION=$(grep '^modVersion=' gradle.properties | cut -d= -f2)
+          cp "build/libs/tauth-${VERSION}.jar" "TAuth-${VERSION}.jar"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: TAuth-${{ env.VERSION }}.jar
+          path: TAuth-${{ env.VERSION }}.jar
+          archive: false
