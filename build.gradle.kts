@@ -77,7 +77,7 @@ repositories {
     }
     maven {
         name = "LDLib"
-        url = uri("https://maven.lowdragmc.com/")
+        url = uri("https://maven.firstdark.dev/snapshots")
         content { includeGroup("com.lowdragmc.ldlib") }
     }
 }
@@ -92,11 +92,15 @@ dependencies {
     implementation("org.dizitart:nitrite-mvstore-adapter:4.3.2")
     implementation("org.dizitart:potassium-nitrite:3.4.0")
 
-    // LDLib client UI — TLS issues with lowdragmc maven
-    // compileOnly("com.lowdragmc.ldlib:ldlib-forge-1.20.1:1.0.38")
+    // LDLib client UI — from firstdark.dev snapshots maven
+    compileOnly("com.lowdragmc.ldlib:ldlib-forge-1.20.1:1.0.50")
 
-    // TrueUUID premium detection API
-    compileOnly(files("libs/TrueUUID.jar"))
+    // Test dependencies
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+
+    // TrueUUID — premium detection API, provided by another mod at runtime
+    // Access via reflection to avoid hard compile-time dependency
 }
 
 mixin {
@@ -134,6 +138,10 @@ tasks.jar {
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
+
+tasks.test {
+    useJUnitPlatform()
+}
 
 publishing {
     publications { create<MavenPublication>("mavenJava") { artifact(tasks.jar) } }
