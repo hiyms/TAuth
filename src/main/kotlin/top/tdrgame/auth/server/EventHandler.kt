@@ -3,8 +3,11 @@ package top.tdrgame.auth.server
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import net.minecraftforge.event.ServerChatEvent
+import net.minecraftforge.event.server.ServerStartingEvent
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.item.ItemTossEvent
+import net.minecraftforge.event.entity.living.LivingDeathEvent
+import net.minecraftforge.event.entity.living.LivingHurtEvent
 import net.minecraftforge.event.entity.player.*
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
@@ -25,6 +28,13 @@ object EventHandler {
      * 实际数据落盘在 [InventoryBackupStore]，内存集合仅用于快速判断与登出清理。
      */
     private val inventoryBackups = mutableSetOf<String>()
+
+    @SubscribeEvent
+    @JvmStatic
+    fun onServerStarting(event: ServerStartingEvent) {
+        if (!AuthConfig.enabled.get()) return
+        MigrationService.runIfNeeded(TAuthHolder.storage)
+    }
 
     @SubscribeEvent
     @JvmStatic
@@ -49,12 +59,8 @@ object EventHandler {
 
         AuthManager.onPlayerJoin(player, isPremium, isVerified, isRegistered)
 
-        // 未认证 → 备份并清空背包（落盘，防止服务端崩溃导致丢背包）
         if (!AuthManager.isAuthenticated(player)) {
-            val backup = player.inventory.save(net.minecraft.nbt.ListTag())
-            InventoryBackupStore.save(name, backup)
-            inventoryBackups.add(name)
-            player.inventory.clearContent()
+            hideInventoryForAuth(player)
         }
     }
 
@@ -63,10 +69,10 @@ object EventHandler {
     fun onPlayerLogout(event: PlayerEvent.PlayerLoggedOutEvent) {
         if (!AuthConfig.enabled.get()) return
         val player = event.entity as? ServerPlayer ?: return
-        // 下线时若仍未认证，把背包直接还原回玩家对象并非必须；
-        // 这里清理内存标记，磁盘备份保留以备其下次上线能立即恢复（认证通过后）。
-        inventoryBackups.remove(player.name.string)
+        // 下线前恢复已清空的背包和原始状态，避免服务端把空背包/Adventure 状态保存进 playerdata。
+        restoreInventory(player, notify = false)
         AuthManager.onPlayerLeave(player)
+        inventoryBackups.remove(player.name.string)
     }
 
     @SubscribeEvent
@@ -78,6 +84,8 @@ object EventHandler {
         AuthManager.tick()
         AuthManager.collectKicks().forEach { (name, reason) ->
             val player = event.server.playerList.getPlayerByName(name) ?: return@forEach
+            restoreInventory(player, notify = false)
+            AuthManager.restoreOriginalState(player)
             player.connection.disconnect(Component.literal(reason))
         }
     }
@@ -149,15 +157,53 @@ object EventHandler {
         }
     }
 
+    @SubscribeEvent @JvmStatic
+    fun onHurt(event: LivingHurtEvent) {
+        if (!AuthConfig.enabled.get()) return
+        val player = event.entity as? ServerPlayer ?: return
+        if (!AuthManager.isAuthenticated(player)) {
+            event.isCanceled = true
+            player.health = player.maxHealth
+        }
+    }
+
+    @SubscribeEvent @JvmStatic
+    fun onDeath(event: LivingDeathEvent) {
+        if (!AuthConfig.enabled.get()) return
+        val player = event.entity as? ServerPlayer ?: return
+        if (!AuthManager.isAuthenticated(player)) {
+            event.isCanceled = true
+            player.health = player.maxHealth
+        }
+    }
+
+    /** 进入未认证状态时隐藏玩家背包。 */
+    fun hideInventoryForAuth(player: ServerPlayer) {
+        val name = player.name.string
+        val backup = player.inventory.save(net.minecraft.nbt.ListTag())
+        InventoryBackupStore.saveIfAbsent(name, backup)
+        inventoryBackups.add(name)
+        player.inventory.clearContent()
+        player.inventoryMenu.broadcastChanges()
+        player.containerMenu.broadcastChanges()
+    }
+
     /** 认证通过后恢复玩家背包（从磁盘备份读取）。 */
     fun restoreInventory(player: ServerPlayer) {
+        restoreInventory(player, notify = true)
+    }
+
+    fun restoreInventory(player: ServerPlayer, notify: Boolean) {
         val name = player.name.string
         inventoryBackups.remove(name)
-        val backup = InventoryBackupStore.loadAndConsume(name) ?: return
+        val backup = InventoryBackupStore.load(name) ?: return
         player.inventory.load(backup)
         player.inventoryMenu.broadcastChanges()
         player.containerMenu.broadcastChanges()
-        player.sendSystemMessage(Component.literal("§a背包已恢复。"))
+        InventoryBackupStore.consume(name)
+        if (notify) {
+            player.sendSystemMessage(Component.literal("§a背包已恢复。"))
+        }
     }
 }
 

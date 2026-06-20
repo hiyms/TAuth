@@ -3,6 +3,7 @@ package top.tdrgame.auth.server
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.apache.logging.log4j.LogManager
+import top.tdrgame.auth.config.AuthConfig
 import java.io.File
 
 /**
@@ -15,13 +16,19 @@ object MigrationService {
     private val gson = Gson()
 
     fun runIfNeeded(storage: PasswordStorage) {
-        if (File(MARKER_FILE).exists()) {
+        if (!AuthConfig.enabled.get()) {
+            logger.info("Auth disabled, skipping migration.")
+            return
+        }
+        val marker = File(MARKER_FILE)
+        marker.parentFile?.mkdirs()
+        if (marker.exists()) {
             logger.info("Migration marker found, skipping.")
             return
         }
         if (!storage.isEmpty()) {
             logger.info("Nitrite database not empty, assuming already migrated.")
-            File(MARKER_FILE).createNewFile()
+            marker.createNewFile()
             return
         }
 
@@ -29,8 +36,8 @@ object MigrationService {
         migrated = migrated or migrateOfflineauth(storage)
         migrated = migrated or migrateTrueUUID(storage)
 
+        marker.createNewFile()
         if (migrated) {
-            File(MARKER_FILE).createNewFile()
             logger.info("Migration completed.")
         } else {
             logger.info("No legacy data found to migrate.")
@@ -83,7 +90,7 @@ object MigrationService {
                 if (entry.has("premiumUuid")) {
                     val existing = storage.get(name)
                     if (existing != null) {
-                        storage.updateVerification(name, verified = true, loginType = "online")
+                        storage.updateVerification(name, isPremium = true, loginType = "online")
                         count++
                     }
                 }

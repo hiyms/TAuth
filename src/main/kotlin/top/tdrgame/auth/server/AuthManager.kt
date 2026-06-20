@@ -3,6 +3,7 @@ package top.tdrgame.auth.server
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.GameType
 import top.tdrgame.auth.state.AuthStateMachine
+import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -12,8 +13,14 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object AuthManager {
 
+    private data class RestrictionSnapshot(
+        val gameMode: GameType,
+        val invulnerable: Boolean
+    )
+
     private val pendingPlayers = ConcurrentHashMap<String, AuthStateMachine>()
     private val authenticatedPlayers = ConcurrentHashMap.newKeySet<String>()
+    private val restrictionSnapshots = ConcurrentHashMap<String, RestrictionSnapshot>()
 
     fun onPlayerJoin(
         player: ServerPlayer,
@@ -34,6 +41,7 @@ object AuthManager {
 
     fun onPlayerLeave(player: ServerPlayer) {
         val name = player.name.string
+        restoreOriginalState(player)
         pendingPlayers.remove(name)
         authenticatedPlayers.remove(name)
     }
@@ -67,20 +75,43 @@ object AuthManager {
         authenticatedPlayers.add(name)
     }
 
+    fun forcePending(player: ServerPlayer, isPremium: Boolean, isVerified: Boolean, isRegistered: Boolean) {
+        val name = player.name.string
+        authenticatedPlayers.remove(name)
+        pendingPlayers[name] = AuthStateMachine(player, isPremium, isVerified, isRegistered)
+        restrictPlayer(player)
+    }
+
     fun getPlayerIp(player: ServerPlayer): String {
-        val raw = player.connection.remoteAddress?.toString() ?: return "unknown"
-        val address = raw.removePrefix("/")
-        val idx = address.indexOf(':')
-        return if (idx > 0) address.substring(0, idx) else address
+        val remote = player.connection.remoteAddress ?: return "unknown"
+        if (remote is InetSocketAddress) {
+            return remote.address?.hostAddress ?: remote.hostString ?: "unknown"
+        }
+        val raw = remote.toString().removePrefix("/")
+        val lastColon = raw.lastIndexOf(':')
+        return if (lastColon > 0 && raw.indexOf(':') == lastColon) raw.substring(0, lastColon) else raw
+    }
+
+    fun restoreOriginalState(player: ServerPlayer) {
+        val name = player.name.string
+        val snapshot = restrictionSnapshots.remove(name) ?: return
+        player.setInvulnerable(snapshot.invulnerable)
+        player.setGameMode(snapshot.gameMode)
     }
 
     private fun restrictPlayer(player: ServerPlayer) {
+        val name = player.name.string
+        restrictionSnapshots.computeIfAbsent(name) {
+            RestrictionSnapshot(
+                gameMode = player.gameMode.gameModeForPlayer,
+                invulnerable = player.isInvulnerable
+            )
+        }
         player.setInvulnerable(true)
         player.setGameMode(GameType.ADVENTURE)
     }
 
     fun unrestrictPlayer(player: ServerPlayer) {
-        player.setInvulnerable(false)
-        player.setGameMode(GameType.SURVIVAL)
+        restoreOriginalState(player)
     }
 }

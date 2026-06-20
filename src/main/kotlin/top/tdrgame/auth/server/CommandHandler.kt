@@ -8,6 +8,10 @@ import net.minecraftforge.event.RegisterCommandsEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 import top.tdrgame.auth.config.AuthConfig
+import top.tdrgame.auth.network.AuthPackets
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 注册 /login、/register、/resetpasswd 命令。
@@ -82,8 +86,19 @@ object CommandHandler {
                         val targetName = StringArgumentType.getString(ctx, "player")
                         if (!AuthConfig.enabled.get()) return@executes 1
                         TAuthHolder.storage.delete(targetName)
+                        pendingChallenges.remove(targetName)
+                        val target = ctx.source.server.playerList.getPlayerByName(targetName)
+                        if (target != null) {
+                            AuthManager.forcePending(target,
+                                isPremium = TrueUuidBridge.isPremium(target.name.string),
+                                isVerified = false,
+                                isRegistered = false)
+                            EventHandler.hideInventoryForAuth(target)
+                            target.sendSystemMessage(Component.literal(
+                                "§c你的密码已被管理员重置，请重新 /register。"))
+                        }
                         ctx.source.sendSuccess(
-                            { Component.literal("§a已重置 $targetName 的密码。该玩家下次登录需重新验证。") },
+                            { Component.literal("§a已重置 $targetName 的密码。该玩家需要重新注册。") },
                             true
                         )
                         return@executes 1
@@ -106,21 +121,10 @@ object CommandHandler {
             return
         }
 
-        // TASK 规则：曾经用过正版登录的玩家，若想切换到离线登录，
-        // 必须在「正版登录」状态下执行 /register 绑定密码。
-        // 因此仅当当前为正版登录时，register 才允许在「已有正版身份」的前提下生效；
-        // 全新离线玩家（无任何身份）仍可 register。
         val isPremium = TrueUuidBridge.isPremium(name)
-        if (storage.hasPremiumHistory(name) && !isPremium) {
-            player.sendSystemMessage(Component.literal(
-                "§c你曾使用正版登录，必须先以正版身份登录后再 /register 绑定离线密码！"))
-            machine?.onLoginFail()
-            return
-        }
-
-        storage.register(name, password)
-        // 注册即视为本轮已认证；若是正版注册，一并记为已验证。
-        finishLogin(player, if (isPremium) "online" else "offline")
+        val loginType = if (isPremium) "online" else "offline"
+        storage.register(name, password, verified = isPremium, loginType = loginType)
+        finishLogin(player)
         player.sendSystemMessage(Component.literal("§a注册成功，已自动登录！"))
     }
 
@@ -143,14 +147,13 @@ object CommandHandler {
 
         val isPremium = TrueUuidBridge.isPremium(name)
         val loginType = if (isPremium) "online" else "offline"
-        // 正版登录验证通过后置 verified=true，此后正版登录永远免验证。
-        storage.updateVerification(name, verified = isPremium, loginType = loginType)
+        storage.updateVerification(name, isPremium = isPremium, loginType = loginType)
 
-        finishLogin(player, loginType)
+        finishLogin(player)
         player.sendSystemMessage(Component.literal("§a登录成功！"))
     }
 
-    private fun finishLogin(player: ServerPlayer, loginType: String) {
+    private fun finishLogin(player: ServerPlayer) {
         val machine = AuthManager.getStateMachine(player)
         machine?.onLoginSuccess()
         AuthManager.markAuthenticated(player)
@@ -160,80 +163,116 @@ object CommandHandler {
 
     // ───────────────────────── 网络挑战-响应流程 ─────────────────────────
 
-    /** 服务端待处理挑战：玩家名 → (challenge, 期望响应)。仅在内存，登录完成即清除。 */
-    private val pendingChallenges = mutableMapOf<String, Pair<Long, ByteArray>>()
+    private data class ChallengeSession(
+        val challenge: Long,
+        val expected: ByteArray,
+        val derivedKey: ByteArray,
+        val machineId: String?,
+        val autoLogin: Boolean
+    )
+
+    /** 服务端待处理挑战：玩家名 → challenge 会话。仅在内存，登录完成即清除。 */
+    private val pendingChallenges = ConcurrentHashMap<String, ChallengeSession>()
 
     /** 客户端发起登录请求：生成挑战并回发。 */
-    fun handleLoginRequest(player: ServerPlayer, packet: top.tdrgame.auth.network.AuthPackets.LoginRequestPacket) {
+    fun handleLoginRequest(player: ServerPlayer, packet: AuthPackets.LoginRequestPacket) {
         val name = player.name.string
         val storage = TAuthHolder.storage
-        // 已认证（正版全新玩家、历史已验证等）→ 直接告知客户端放行，无需挑战。
         if (AuthManager.isAuthenticated(player)) {
-            top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-                top.tdrgame.auth.network.AuthPackets.LoginResultPacket(true, "已认证。", null))
+            AuthPackets.sendToPlayer(player, result(true, AuthPackets.CODE_LOGIN_OK, "已认证。"))
             return
         }
+
         val params = storage.getHashParams(name)
         if (params == null) {
-            top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-                top.tdrgame.auth.network.AuthPackets.LoginResultPacket(false,
-                    "你尚未注册。请使用 /register 注册！", null))
-            AuthManager.getStateMachine(player)?.onLoginFail()
+            AuthPackets.sendToPlayer(player,
+                result(false, AuthPackets.CODE_NOT_REGISTERED,
+                    "你尚未注册。请使用 /register 注册！", policy = storage.hashPolicy()))
             return
         }
+
+        val autoLogin = packet.mode == "auto"
+        val machineId = packet.machineId
+        if (autoLogin && !storage.isAutoLoginAllowed(name, machineId, AuthManager.getPlayerIp(player))) {
+            AuthPackets.sendToPlayer(player,
+                result(false, AuthPackets.CODE_AUTO_DENIED, "自动登录条件不匹配，请手动登录。"))
+            return
+        }
+
         // 随机挑战值；期望响应 = SHA256(storedHash || challenge)
-        val challenge = java.security.SecureRandom().nextLong()
-        val expected = top.tdrgame.auth.network.AuthPackets.challengeResponse(params.hash, challenge)
-        pendingChallenges[name] = challenge to expected
-        top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-            top.tdrgame.auth.network.AuthPackets.ChallengePacket(
-                challenge, params.salt, params.iterations, params.keyLengthBits))
+        val challenge = SecureRandom().nextLong()
+        val expected = AuthPackets.challengeResponse(params.hash, challenge)
+        pendingChallenges[name] = ChallengeSession(challenge, expected, params.hash, machineId, autoLogin)
+        AuthPackets.sendToPlayer(player,
+            AuthPackets.ChallengePacket(
+                challenge, params.salt, params.iterations, params.keyLengthBits, autoLogin))
     }
 
     /** 客户端回传挑战响应：校验并完成登录。 */
-    fun handleChallengeResponse(player: ServerPlayer, packet: top.tdrgame.auth.network.AuthPackets.ChallengeResponsePacket) {
+    fun handleChallengeResponse(player: ServerPlayer, packet: AuthPackets.ChallengeResponsePacket) {
         val name = player.name.string
-        val pending = pendingChallenges.remove(name)
-        if (pending == null) {
-            top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-                top.tdrgame.auth.network.AuthPackets.LoginResultPacket(false, "无待处理挑战，请重试。", null))
+        val session = pendingChallenges.remove(name)
+        if (session == null) {
+            AuthPackets.sendToPlayer(player,
+                result(false, AuthPackets.CODE_ERROR, "无待处理挑战，请重试。"))
             return
         }
-        val (_, expected) = pending
-        if (!java.util.Arrays.equals(expected, packet.response)) {
+        if (!MessageDigest.isEqual(session.expected, packet.response)) {
             AuthManager.getStateMachine(player)?.onLoginFail()
-            top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-                top.tdrgame.auth.network.AuthPackets.LoginResultPacket(false, "密码错误！", null))
+            AuthPackets.sendToPlayer(player,
+                result(false, AuthPackets.CODE_BAD_PASSWORD, "密码错误！"))
             return
         }
         val isPremium = TrueUuidBridge.isPremium(name)
         val loginType = if (isPremium) "online" else "offline"
-        TAuthHolder.storage.updateVerification(name, verified = isPremium, loginType = loginType)
-        finishLogin(player, loginType)
-        // 回传成功 + 期望响应字节作为「记住此设备」的凭证（非明文密码）。
-        top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-            top.tdrgame.auth.network.AuthPackets.LoginResultPacket(true, "登录成功！", expected))
+        TAuthHolder.storage.updateVerification(name, isPremium = isPremium, loginType = loginType)
+        if (!session.machineId.isNullOrBlank()) {
+            TAuthHolder.storage.updateAutoLogin(name, session.machineId, AuthManager.getPlayerIp(player))
+        }
+        finishLogin(player)
+        AuthPackets.sendToPlayer(player,
+            result(true, AuthPackets.CODE_LOGIN_OK, "登录成功！",
+                rememberKey = if (!session.machineId.isNullOrBlank()) session.derivedKey else null))
     }
 
     /** 客户端提交注册（已本地哈希）：写入并完成登录。 */
-    fun handleRegisterSubmit(player: ServerPlayer, packet: top.tdrgame.auth.network.AuthPackets.RegisterSubmitPacket) {
+    fun handleRegisterSubmit(player: ServerPlayer, packet: AuthPackets.RegisterSubmitPacket) {
         val name = player.name.string
-        val isPremium = packet.isPremium
-        // 与命令路径同样的约束：曾用正版登录的玩家必须正版身份下注册。
-        if (TAuthHolder.storage.hasPremiumHistory(name) && !isPremium) {
-            top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-                top.tdrgame.auth.network.AuthPackets.LoginResultPacket(false,
-                    "你曾使用正版登录，必须先以正版身份登录后再注册绑定离线密码！", null))
-            AuthManager.getStateMachine(player)?.onLoginFail()
+        val isPremium = TrueUuidBridge.isPremium(name)
+        val loginType = if (isPremium) "online" else "offline"
+        val parsed = PasswordHasher.parse(packet.passwordHash)
+        if (parsed == null) {
+            AuthPackets.sendToPlayer(player,
+                result(false, AuthPackets.CODE_ERROR, "密码哈希格式非法，请重试。"))
             return
         }
-        if (!TAuthHolder.storage.registerWithHash(name, packet.passwordHash)) {
-            top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-                top.tdrgame.auth.network.AuthPackets.LoginResultPacket(false, "你已注册，请直接登录。", null))
+        if (!TAuthHolder.storage.registerWithHash(name, packet.passwordHash, verified = isPremium, loginType = loginType)) {
+            AuthPackets.sendToPlayer(player,
+                result(false, AuthPackets.CODE_ALREADY_REGISTERED, "你已注册，请直接登录。"))
             return
         }
-        finishLogin(player, if (isPremium) "online" else "offline")
-        top.tdrgame.auth.network.AuthPackets.sendToPlayer(player,
-            top.tdrgame.auth.network.AuthPackets.LoginResultPacket(true, "注册成功，已自动登录！", null))
+        if (!packet.machineId.isNullOrBlank()) {
+            TAuthHolder.storage.updateAutoLogin(name, packet.machineId, AuthManager.getPlayerIp(player))
+        }
+        finishLogin(player)
+        AuthPackets.sendToPlayer(player,
+            result(true, AuthPackets.CODE_REGISTER_OK, "注册成功，已自动登录！",
+                rememberKey = if (!packet.machineId.isNullOrBlank()) parsed.hash else null))
     }
+
+    private fun result(
+        success: Boolean,
+        code: String,
+        message: String,
+        rememberKey: ByteArray? = null,
+        policy: PasswordStorage.HashPolicy = TAuthHolder.storage.hashPolicy()
+    ): AuthPackets.LoginResultPacket = AuthPackets.LoginResultPacket(
+        success = success,
+        code = code,
+        message = message,
+        rememberKey = rememberKey,
+        saltBytes = policy.saltBytes,
+        iterations = policy.iterations,
+        keyBits = policy.keyLengthBits
+    )
 }

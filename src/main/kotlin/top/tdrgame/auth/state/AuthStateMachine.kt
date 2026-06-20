@@ -11,10 +11,9 @@ import top.tdrgame.auth.config.AuthConfig
  * 所有数据仅存于服务端内存 — 重启后清除是预期行为。
  *
  * 放行规则（与 TASK 对齐）：
- * - 正版全新玩家（isPremium=true 且从未注册）→ 永不需要验证，直接放行。
- * - 任何已验证玩家（isVerified=true）→ 直接放行。涵盖「首次正版登录后永久免验证」
- *   以及「曾在正版状态下 register、之后离线登录」两种情形。
- * - 其余情况进入 [AuthState.Pending]，等待 /login 或 /register。
+ * - 首次登录（无论正版/离线）都必须 /register。
+ * - 已注册且曾经正版验证过的玩家，仅当本次也是正版登录时免 /login。
+ * - 离线/盗版登录始终需要 /login。
  */
 class AuthStateMachine(
     private val player: ServerPlayer,
@@ -33,10 +32,7 @@ class AuthStateMachine(
     private var remindTick: Int = 0
 
     init {
-        // 正版全新玩家：从未注册过，本轮为正版登录 → 免验证。
-        // 已验证玩家：无论正版/离线，历史已通过验证 → 免验证。
-        val shouldAutoPass = (isPremium && !isRegistered) || isVerified
-        if (shouldAutoPass) {
+        if (shouldAutoPass(isPremium, isVerified, isRegistered)) {
             state = AuthState.Authenticated(System.currentTimeMillis())
         }
     }
@@ -91,4 +87,10 @@ class AuthStateMachine(
     fun shouldKick(): Boolean = state is AuthState.TimedOut
 
     fun kickReason(): String = (state as? AuthState.TimedOut)?.reason ?: "Unknown"
+
+    companion object {
+        /** 纯策略：只有已注册、历史正版验证、本次正版登录三者同时满足才可自动放行。 */
+        fun shouldAutoPass(isPremium: Boolean, isVerified: Boolean, isRegistered: Boolean): Boolean =
+            isRegistered && isPremium && isVerified
+    }
 }

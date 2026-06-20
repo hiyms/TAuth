@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import top.tdrgame.auth.config.AuthConfig;
 import top.tdrgame.auth.server.AuthManager;
 
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -23,7 +24,7 @@ import java.util.Set;
 public class CommandMixin {
 
     private static final Set<String> ALLOWED_COMMANDS = Set.of(
-        "login", "l", "register", "reg", "help", "?", "resetpasswd"
+        "login", "l", "register", "reg"
     );
 
     /**
@@ -42,6 +43,14 @@ public class CommandMixin {
     ) {
         CommandSourceStack source = parse.getContext().getSource();
         ServerPlayer player = source.getPlayer();
+
+        if (!AuthConfig.isEnabled()) {
+            try {
+                return dispatcher.execute(parse);
+            } catch (CommandSyntaxException e) {
+                return 0;
+            }
+        }
 
         if (player != null && !AuthManager.INSTANCE.isAuthenticated(player)) {
             String commandName = parse.getReader().getString()

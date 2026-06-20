@@ -7,7 +7,6 @@ import org.apache.logging.log4j.LogManager
 import thedarkcolour.kotlinforforge.forge.MOD_BUS
 import top.tdrgame.auth.config.AuthConfig
 import top.tdrgame.auth.network.AuthPackets
-import top.tdrgame.auth.server.MigrationService
 import top.tdrgame.auth.server.PasswordStorage
 import top.tdrgame.auth.server.TAuthHolder
 
@@ -51,9 +50,8 @@ object TAuth {
         @JvmStatic
         @net.minecraftforge.eventbus.api.SubscribeEvent
         fun onCommonSetup(event: FMLCommonSetupEvent) {
-            event.enqueueWork {
-                MigrationService.runIfNeeded(storage)
-            }
+            // Common setup intentionally does not open/migrate the auth database.
+            // Migration is gated by auth.enabled during server lifecycle events.
         }
 
         @JvmStatic

@@ -1,5 +1,6 @@
 package top.tdrgame.auth.server
 
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.*
 import javax.crypto.SecretKeyFactory
@@ -36,6 +37,9 @@ object PasswordHasher {
 
     /** 用给定参数生成新的哈希字符串。 */
     fun hash(password: String, saltBytes: Int, iterations: Int, keyBits: Int): String {
+        require(saltBytes > 0) { "saltBytes must be positive" }
+        require(iterations > 0) { "iterations must be positive" }
+        require(keyBits > 0) { "keyBits must be positive" }
         val salt = ByteArray(saltBytes).also { SecureRandom().nextBytes(it) }
         val derived = derive(password, salt, iterations, keyBits)
         val b64 = Base64.getEncoder()
@@ -45,16 +49,20 @@ object PasswordHasher {
 
     /** 校验输入密码与存储哈希是否匹配。 */
     fun verify(input: String, stored: String): Boolean {
-        val parsed = parse(stored) ?: return false
-        val inputHash = derive(input, parsed.salt, parsed.iterations, parsed.keyLengthBits)
-        return Arrays.equals(parsed.hash, inputHash)
+        return try {
+            val parsed = parse(stored) ?: return false
+            val inputHash = derive(input, parsed.salt, parsed.iterations, parsed.keyLengthBits)
+            MessageDigest.isEqual(parsed.hash, inputHash)
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** 解析存储的哈希字符串，支持 v1 五段与 offlineauth 两段格式。 */
     fun parse(stored: String): ParsedHash? {
         return try {
             val parts = stored.split(SALT_SEPARATOR)
-            when {
+            val parsed = when {
                 parts.size == 5 && parts[0] == FORMAT_PREFIX -> {
                     ParsedHash(
                         iterations = parts[1].toInt(),
@@ -74,10 +82,17 @@ object PasswordHasher {
                 }
                 else -> null
             }
+            parsed?.takeIf { isValidParsedHash(it) }
         } catch (_: Exception) {
             null
         }
     }
+
+    private fun isValidParsedHash(parsed: ParsedHash): Boolean =
+        parsed.iterations > 0 &&
+            parsed.keyLengthBits > 0 &&
+            parsed.salt.isNotEmpty() &&
+            parsed.hash.isNotEmpty()
 
     /** PBKDF2 派生 key。 */
     fun derive(password: String, salt: ByteArray, iterations: Int, keyLengthBits: Int): ByteArray {

@@ -1,10 +1,10 @@
 package top.tdrgame.auth.server
 
 import org.dizitart.no2.Nitrite
-import org.dizitart.no2.mvstore.MVStoreModule
-import org.dizitart.no2.repository.ObjectRepository
 import org.dizitart.no2.filters.Filter
 import org.dizitart.no2.filters.FluentFilter
+import org.dizitart.no2.mvstore.MVStoreModule
+import org.dizitart.no2.repository.ObjectRepository
 import top.tdrgame.auth.config.AuthConfig
 
 /**
@@ -15,10 +15,14 @@ data class PlayerAuthData(
     val playerName: String,
     /** PBKDF2 哈希结果。新条目为 "v1:iter:keyBits:saltB64:hashB64"；迁移自 offlineauth 的为 "saltB64:hashB64"。 */
     val passwordHash: String,
-    /** 是否已证明拥有正版账号。true 时正版进入免验证，离线进入仍需要 /login。 */
+    /** 是否已证明拥有正版账号。true 时仅正版进入可免验证，离线进入仍需要 /login。 */
     val verified: Boolean = false,
     /** 上次登录类型："online" 或 "offline"，null 表示从未登录过。 */
-    val lastLoginType: String? = null
+    val lastLoginType: String? = null,
+    /** 客户端自动登录绑定的机器 ID。 */
+    val autoLoginMachineId: String? = null,
+    /** 客户端自动登录绑定的上次来源 IP（服务端观察值）。 */
+    val autoLoginIp: String? = null
 )
 
 /**
@@ -70,12 +74,13 @@ class PasswordStorage {
     /**
      * 注册新玩家，密码以 PBKDF2 哈希存储。
      */
-    fun register(playerName: String, password: String) {
+    fun register(playerName: String, password: String, verified: Boolean = false, loginType: String? = null) {
         repo.insert(
             PlayerAuthData(
                 playerName = playerName,
                 passwordHash = hashPassword(password),
-                verified = false
+                verified = verified,
+                lastLoginType = loginType
             )
         )
     }
@@ -115,16 +120,17 @@ class PasswordStorage {
     }
 
     /**
-     * 客户端已在本地完成 PBKDF2 并提交 salt:hash 字符串，服务端直接落库。
-     * @return 是否注册成功（已存在则返回 false）。
+     * 客户端已在本地完成 PBKDF2 并提交哈希字符串，服务端校验格式后落库。
+     * @return 是否注册成功（已存在或格式非法则返回 false）。
      */
-    fun registerWithHash(playerName: String, passwordHash: String): Boolean {
+    fun registerWithHash(playerName: String, passwordHash: String, verified: Boolean = false, loginType: String? = null): Boolean {
         if (repo.find(byName(playerName)).firstOrNull() != null) return false
+        if (PasswordHasher.parse(passwordHash) == null) return false
         repo.insert(PlayerAuthData(
             playerName = playerName,
             passwordHash = passwordHash,
-            verified = false,
-            lastLoginType = "offline"
+            verified = verified,
+            lastLoginType = loginType
         ))
         return true
     }
@@ -133,10 +139,22 @@ class PasswordStorage {
     fun hasPremiumHistory(playerName: String): Boolean =
         repo.find(byName(playerName)).firstOrNull()?.verified == true
 
-    /** 更新 verified 标志和登录类型。 */
-    fun updateVerification(playerName: String, verified: Boolean, loginType: String) {
+    /** 更新 verified 标志和登录类型。verified 为曾经正版验证过，离线登录不会清除它。 */
+    fun updateVerification(playerName: String, isPremium: Boolean, loginType: String) {
         val data = repo.find(byName(playerName)).firstOrNull() ?: return
-        repo.update(data.copy(verified = verified, lastLoginType = loginType))
+        repo.update(data.copy(verified = data.verified || isPremium, lastLoginType = loginType))
+    }
+
+    /** 记录/更新自动登录绑定信息。 */
+    fun updateAutoLogin(playerName: String, machineId: String?, ip: String?) {
+        val data = repo.find(byName(playerName)).firstOrNull() ?: return
+        repo.update(data.copy(autoLoginMachineId = machineId, autoLoginIp = ip))
+    }
+
+    fun isAutoLoginAllowed(playerName: String, machineId: String?, ip: String): Boolean {
+        if (machineId.isNullOrBlank()) return false
+        val data = repo.find(byName(playerName)).firstOrNull() ?: return false
+        return data.autoLoginMachineId == machineId && data.autoLoginIp == ip
     }
 
     /** 获取所有已注册玩家名（迁移遍历用）。 */
@@ -154,15 +172,21 @@ class PasswordStorage {
         repo.insert(data)
     }
 
+    fun hashPolicy(): HashPolicy = HashPolicy(
+        saltBytes = AuthConfig.saltBytes.get().coerceIn(LEGACY_SALT_BYTES, 64),
+        iterations = AuthConfig.iterations.get().coerceAtLeast(1000),
+        keyLengthBits = AuthConfig.keyLengthBits.get().coerceAtLeast(128)
+    )
+
+    data class HashPolicy(val saltBytes: Int, val iterations: Int, val keyLengthBits: Int)
+
     private fun byName(name: String): Filter =
         FluentFilter.where("playerName").eq(name)
 
     /** 用 [AuthConfig] 配置参数生成哈希。算法实现见 [PasswordHasher]。 */
     private fun hashPassword(password: String): String {
-        val saltBytes = AuthConfig.saltBytes.get().coerceIn(LEGACY_SALT_BYTES, 64)
-        val iterations = AuthConfig.iterations.get().coerceAtLeast(1000)
-        val keyBits = AuthConfig.keyLengthBits.get().coerceAtLeast(128)
-        return PasswordHasher.hash(password, saltBytes, iterations, keyBits)
+        val policy = hashPolicy()
+        return PasswordHasher.hash(password, policy.saltBytes, policy.iterations, policy.keyLengthBits)
     }
 
     private fun verifyPassword(input: String, stored: String): Boolean =
