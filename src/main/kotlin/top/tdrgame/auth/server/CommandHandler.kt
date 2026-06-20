@@ -6,7 +6,6 @@ import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import net.minecraftforge.event.RegisterCommandsEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
-import net.minecraftforge.fml.common.Mod
 import top.tdrgame.auth.TAuth
 import top.tdrgame.auth.config.AuthConfig
 import top.tdrgame.auth.network.AuthPackets
@@ -17,7 +16,6 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 注册 /login、/register、/resetpasswd 命令。
  */
-@Mod.EventBusSubscriber
 object CommandHandler {
 
     @SubscribeEvent

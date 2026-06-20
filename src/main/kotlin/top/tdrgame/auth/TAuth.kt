@@ -1,5 +1,6 @@
 package top.tdrgame.auth
 
+import net.minecraftforge.common.MinecraftForge
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
 import net.minecraftforge.fml.event.config.ModConfigEvent
@@ -8,6 +9,8 @@ import org.apache.logging.log4j.LogManager
 import thedarkcolour.kotlinforforge.forge.MOD_BUS
 import top.tdrgame.auth.config.AuthConfig
 import top.tdrgame.auth.network.AuthPackets
+import top.tdrgame.auth.server.CommandHandler
+import top.tdrgame.auth.server.EventHandler
 import top.tdrgame.auth.server.PasswordStorage
 import top.tdrgame.auth.server.TAuthHolder
 
@@ -41,11 +44,13 @@ object TAuth {
         // 3. 注册网络包
         AuthPackets.register()
 
-        // 4. 注册事件总线
-        MOD_BUS.register(this)
+        // 4. 注册事件总线。Kotlin object + @EventBusSubscriber 在生产环境下不够直观，显式注册更可靠。
+        MOD_BUS.register(ModEvents)
+        MinecraftForge.EVENT_BUS.register(EventHandler)
+        MinecraftForge.EVENT_BUS.register(CommandHandler)
+        LOGGER.info("Registered TAuth mod and Forge event handlers.")
     }
 
-    @Mod.EventBusSubscriber(bus = Mod.EventBusSubscriber.Bus.MOD)
     object ModEvents {
 
         @JvmStatic
