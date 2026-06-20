@@ -69,6 +69,8 @@ minecraft {
 
 sourceSets.main.get().resources { srcDir("src/generated/resources/") }
 
+jarJar.enable()
+
 repositories {
     maven {
         name = "Kotlin for Forge"
@@ -87,11 +89,15 @@ dependencies {
     implementation("thedarkcolour:kotlinforforge:$kffVer")
     annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
 
-    // Nitrite v4
+    // Nitrite v4 — runtime libraries are embedded with Forge Jar-in-Jar for production servers.
     implementation(platform("org.dizitart:nitrite-bom:4.3.2"))
     implementation("org.dizitart:nitrite")
     implementation("org.dizitart:nitrite-mvstore-adapter:4.3.2")
-    implementation("org.dizitart:potassium-nitrite:3.4.0")
+    jarJar("org.dizitart:nitrite:[4.3.2,4.4)")
+    jarJar("org.dizitart:nitrite-mvstore-adapter:[4.3.2,4.4)")
+    jarJar("com.h2database:h2-mvstore:[2.3.232,2.4)")
+    jarJar("org.jasypt:jasypt:[1.9.3,2.0)")
+    jarJar("commons-codec:commons-codec:[1.18.0,1.18.1)")
 
     // LDLib client UI — from firstdark.dev snapshots maven
     compileOnly("com.lowdragmc.ldlib:ldlib-forge-1.20.1:1.0.50")
@@ -127,6 +133,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 }
 
 tasks.jar {
+    archiveClassifier.set("slim")
     manifest {
         attributes["Specification-Title"] = modId
         attributes["Specification-Vendor"] = modAuthors
@@ -136,6 +143,10 @@ tasks.jar {
         attributes["Implementation-Vendor"] = modAuthors
     }
     finalizedBy("reobfJar")
+}
+
+tasks.named<Jar>("jarJar") {
+    archiveClassifier.set("")
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
