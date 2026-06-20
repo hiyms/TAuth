@@ -45,10 +45,10 @@ object TAuth {
         AuthPackets.register()
 
         // 4. 注册事件总线。Kotlin object + @EventBusSubscriber 在生产环境下不够直观，显式注册更可靠。
-        MOD_BUS.register(ModEvents)
-        MinecraftForge.EVENT_BUS.register(EventHandler)
-        MinecraftForge.EVENT_BUS.register(CommandHandler)
-        LOGGER.info("Registered TAuth mod and Forge event handlers.")
+        MOD_BUS.register(ModEvents::class.java)
+        MinecraftForge.EVENT_BUS.register(EventHandler::class.java)
+        MinecraftForge.EVENT_BUS.register(CommandHandler::class.java)
+        LOGGER.info("Registered TAuth mod and Forge static event handler classes.")
     }
 
     object ModEvents {
