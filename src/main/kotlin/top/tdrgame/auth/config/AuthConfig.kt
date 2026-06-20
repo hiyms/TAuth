@@ -3,6 +3,7 @@ package top.tdrgame.auth.config
 import net.minecraftforge.common.ForgeConfigSpec
 import net.minecraftforge.fml.ModLoadingContext
 import net.minecraftforge.fml.config.ModConfig
+import org.apache.logging.log4j.LogManager
 
 /**
  * 模组配置入口，使用 Forge ModConfig TOML 格式。
@@ -11,6 +12,8 @@ import net.minecraftforge.fml.config.ModConfig
  * [auth.enabled] 为 false 时模组完全跳过所有逻辑，性能零开销。
  */
 object AuthConfig {
+
+    private val logger = LogManager.getLogger("tauth/AuthConfig")
 
     val spec: ForgeConfigSpec
 
@@ -57,6 +60,7 @@ object AuthConfig {
      */
     fun register() {
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, spec, "tauth-server.toml")
+        logger.info("Registered TAuth SERVER config as tauth-server.toml. Edit the world/serverconfig copy for dedicated server worlds.")
     }
 
     /** 供 Java 代码调用的便捷开关：auth.enabled 是否开启。 */

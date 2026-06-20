@@ -2,6 +2,7 @@ package top.tdrgame.auth
 
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
+import net.minecraftforge.fml.event.config.ModConfigEvent
 import net.minecraftforge.fml.event.lifecycle.FMLDedicatedServerSetupEvent
 import org.apache.logging.log4j.LogManager
 import thedarkcolour.kotlinforforge.forge.MOD_BUS
@@ -58,6 +59,24 @@ object TAuth {
         @net.minecraftforge.eventbus.api.SubscribeEvent
         fun onServerSetup(event: FMLDedicatedServerSetupEvent) {
             LOGGER.info("TAuth server-side initialized. Auth enabled: {}", AuthConfig.enabled.get())
+        }
+
+        @JvmStatic
+        @net.minecraftforge.eventbus.api.SubscribeEvent
+        fun onConfigLoading(event: ModConfigEvent.Loading) {
+            if (event.config.modId == ID && event.config.fileName == "tauth-server.toml") {
+                LOGGER.info("TAuth config loaded from {}: auth.enabled={}, timeout={}s, maxFailAttempts={}",
+                    event.config.fullPath, AuthConfig.enabled.get(), AuthConfig.loginTimeoutSeconds.get(), AuthConfig.maxFailAttempts.get())
+            }
+        }
+
+        @JvmStatic
+        @net.minecraftforge.eventbus.api.SubscribeEvent
+        fun onConfigReloading(event: ModConfigEvent.Reloading) {
+            if (event.config.modId == ID && event.config.fileName == "tauth-server.toml") {
+                LOGGER.info("TAuth config reloaded from {}: auth.enabled={}, timeout={}s, maxFailAttempts={}",
+                    event.config.fullPath, AuthConfig.enabled.get(), AuthConfig.loginTimeoutSeconds.get(), AuthConfig.maxFailAttempts.get())
+            }
         }
     }
 }

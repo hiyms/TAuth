@@ -7,6 +7,7 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraftforge.event.RegisterCommandsEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
+import top.tdrgame.auth.TAuth
 import top.tdrgame.auth.config.AuthConfig
 import top.tdrgame.auth.network.AuthPackets
 import java.security.MessageDigest
@@ -176,6 +177,12 @@ object CommandHandler {
 
     /** 客户端发起登录请求：生成挑战并回发。 */
     fun handleLoginRequest(player: ServerPlayer, packet: AuthPackets.LoginRequestPacket) {
+        if (!AuthConfig.enabled.get()) {
+            TAuth.LOGGER.info("Ignoring client auth request from {} because authentication is disabled.", player.name.string)
+            AuthPackets.sendToPlayer(player,
+                result(true, AuthPackets.CODE_LOGIN_OK, "Authentication is disabled on this server."))
+            return
+        }
         val name = player.name.string
         val storage = TAuthHolder.storage
         if (AuthManager.isAuthenticated(player)) {
@@ -210,6 +217,12 @@ object CommandHandler {
 
     /** 客户端回传挑战响应：校验并完成登录。 */
     fun handleChallengeResponse(player: ServerPlayer, packet: AuthPackets.ChallengeResponsePacket) {
+        if (!AuthConfig.enabled.get()) {
+            pendingChallenges.remove(player.name.string)
+            AuthPackets.sendToPlayer(player,
+                result(true, AuthPackets.CODE_LOGIN_OK, "Authentication is disabled on this server."))
+            return
+        }
         val name = player.name.string
         val session = pendingChallenges.remove(name)
         if (session == null) {
@@ -237,6 +250,11 @@ object CommandHandler {
 
     /** 客户端提交注册（已本地哈希）：写入并完成登录。 */
     fun handleRegisterSubmit(player: ServerPlayer, packet: AuthPackets.RegisterSubmitPacket) {
+        if (!AuthConfig.enabled.get()) {
+            AuthPackets.sendToPlayer(player,
+                result(true, AuthPackets.CODE_LOGIN_OK, "Authentication is disabled on this server."))
+            return
+        }
         val name = player.name.string
         val isPremium = TrueUuidBridge.isPremium(name)
         val loginType = if (isPremium) "online" else "offline"
@@ -265,7 +283,7 @@ object CommandHandler {
         code: String,
         message: String,
         rememberKey: ByteArray? = null,
-        policy: PasswordStorage.HashPolicy = TAuthHolder.storage.hashPolicy()
+        policy: PasswordStorage.HashPolicy = configuredHashPolicy()
     ): AuthPackets.LoginResultPacket = AuthPackets.LoginResultPacket(
         success = success,
         code = code,
@@ -274,5 +292,11 @@ object CommandHandler {
         saltBytes = policy.saltBytes,
         iterations = policy.iterations,
         keyBits = policy.keyLengthBits
+    )
+
+    private fun configuredHashPolicy(): PasswordStorage.HashPolicy = PasswordStorage.HashPolicy(
+        saltBytes = AuthConfig.saltBytes.get().coerceIn(PasswordStorage.LEGACY_SALT_BYTES, 64),
+        iterations = AuthConfig.iterations.get().coerceAtLeast(1000),
+        keyLengthBits = AuthConfig.keyLengthBits.get().coerceAtLeast(128)
     )
 }

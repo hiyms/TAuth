@@ -12,6 +12,7 @@ import net.minecraftforge.event.entity.player.*
 import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
+import top.tdrgame.auth.TAuth
 import top.tdrgame.auth.config.AuthConfig
 
 /**
@@ -32,17 +33,24 @@ object EventHandler {
     @SubscribeEvent
     @JvmStatic
     fun onServerStarting(event: ServerStartingEvent) {
-        if (!AuthConfig.enabled.get()) return
+        if (!AuthConfig.enabled.get()) {
+            TAuth.LOGGER.info("Authentication is disabled; skipping migration and all server-side auth enforcement.")
+            return
+        }
+        TAuth.LOGGER.info("Authentication is enabled; running migration check and enabling auth enforcement.")
         MigrationService.runIfNeeded(TAuthHolder.storage)
     }
 
     @SubscribeEvent
     @JvmStatic
     fun onPlayerLogin(event: PlayerEvent.PlayerLoggedInEvent) {
-        if (!AuthConfig.enabled.get()) return
         val player = event.entity as? ServerPlayer ?: return
-
         val name = player.name.string
+        if (!AuthConfig.enabled.get()) {
+            TAuth.LOGGER.info("Auth disabled: allowing player {} without authentication checks.", name)
+            return
+        }
+
         val isPremium = TrueUuidBridge.isPremium(name)
         val storage = TAuthHolder.storage
         val data = storage.get(name)
@@ -57,10 +65,15 @@ object EventHandler {
             player.health = player.maxHealth
         }
 
+        TAuth.LOGGER.info("Auth enabled: player {} joined. premium={}, registered={}, verified={}",
+            name, isPremium, isRegistered, isVerified)
         AuthManager.onPlayerJoin(player, isPremium, isVerified, isRegistered)
 
         if (!AuthManager.isAuthenticated(player)) {
+            TAuth.LOGGER.info("Auth enforcement active for player {}; hiding inventory and waiting for login/register.", name)
             hideInventoryForAuth(player)
+        } else {
+            TAuth.LOGGER.info("Player {} is already authenticated by policy; no login prompt required.", name)
         }
     }
 
