@@ -33,7 +33,9 @@ object AuthPackets {
     const val CODE_POLICY_DENIED = "POLICY_DENIED"
     const val CODE_ERROR = "ERROR"
 
-    private const val PROTOCOL_VERSION = "4"
+    const val PREMIUM_PROOF_TYPE = "premium_proof"
+
+    private const val PROTOCOL_VERSION = "5"
     private val acceptsRemote = NetworkRegistry.acceptMissingOr(PROTOCOL_VERSION)
 
     val CHANNEL: SimpleChannel = NetworkRegistry.newSimpleChannel(
@@ -48,6 +50,12 @@ object AuthPackets {
         // 服务端 → 客户端：提示客户端启动登录流程
         CHANNEL.registerMessage(id++, StartAuthPacket::class.java,
             StartAuthPacket::encode, StartAuthPacket::decode, StartAuthPacket::handle)
+        // 服务端 → 客户端：请求客户端本地 Mojang joinServer 证明
+        CHANNEL.registerMessage(id++, PremiumProofRequestPacket::class.java,
+            PremiumProofRequestPacket::encode, PremiumProofRequestPacket::decode, PremiumProofRequestPacket::handle)
+        // 客户端 → 服务端：Mojang joinServer 结果
+        CHANNEL.registerMessage(id++, PremiumProofResponsePacket::class.java,
+            PremiumProofResponsePacket::encode, PremiumProofResponsePacket::decode, PremiumProofResponsePacket::handle)
         // 客户端 → 服务端：请求登录挑战
         CHANNEL.registerMessage(id++, LoginRequestPacket::class.java,
             LoginRequestPacket::encode, LoginRequestPacket::decode, LoginRequestPacket::handle)
@@ -86,22 +94,59 @@ object AuthPackets {
         }
     }
 
+    /** 服务端 → 客户端：请求客户端用本地正版 token 对 nonce 调用 Mojang joinServer。 */
+    class PremiumProofRequestPacket(val nonce: String) {
+        constructor(buf: FriendlyByteBuf) : this(buf.readUtf(128))
+        fun encode(buf: FriendlyByteBuf) { buf.writeUtf(nonce) }
+        fun handle(ctx: Supplier<NetworkEvent.Context>) {
+            val context = ctx.get()
+            context.enqueueWork { runClientHandler("onPremiumProofRequest", this) }
+            context.packetHandled = true
+        }
+        companion object {
+            fun decode(buf: FriendlyByteBuf) = PremiumProofRequestPacket(buf)
+        }
+    }
+
+    /** 客户端 → 服务端：joinServer 成功与否；服务端随后用 hasJoined 复核。 */
+    class PremiumProofResponsePacket(val accepted: Boolean, val nonce: String) {
+        constructor(buf: FriendlyByteBuf) : this(buf.readBoolean(), buf.readUtf(128))
+        fun encode(buf: FriendlyByteBuf) {
+            buf.writeBoolean(accepted)
+            buf.writeUtf(nonce)
+        }
+        fun handle(ctx: Supplier<NetworkEvent.Context>) {
+            val context = ctx.get()
+            context.enqueueWork {
+                val player = context.sender ?: return@enqueueWork
+                CommandHandler.handlePremiumProofResponse(player, this)
+            }
+            context.packetHandled = true
+        }
+        companion object {
+            fun decode(buf: FriendlyByteBuf) = PremiumProofResponsePacket(buf)
+        }
+    }
+
     /** 客户端 → 服务端：发起登录请求。 */
     class LoginRequestPacket(
         val mode: String,
         val playerName: String,
-        val machineId: String?
+        val machineId: String?,
+        val premiumAvailable: Boolean = false
     ) {
         constructor(buf: FriendlyByteBuf) : this(
             buf.readUtf(16),
             buf.readUtf(64),
-            if (buf.readBoolean()) buf.readUtf(64) else null
+            if (buf.readBoolean()) buf.readUtf(64) else null,
+            buf.readBoolean()
         )
         fun encode(buf: FriendlyByteBuf) {
             buf.writeUtf(mode)
             buf.writeUtf(playerName)
             buf.writeBoolean(machineId != null)
             if (machineId != null) buf.writeUtf(machineId)
+            buf.writeBoolean(premiumAvailable)
         }
         /** 服务端处理：生成挑战并回发。 */
         fun handle(ctx: Supplier<NetworkEvent.Context>) {

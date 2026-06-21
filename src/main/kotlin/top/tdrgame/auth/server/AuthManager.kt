@@ -4,6 +4,8 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.GameType
 import top.tdrgame.auth.state.AuthStateMachine
 import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -47,6 +49,7 @@ object AuthManager {
         restoreOriginalState(player)
         pendingPlayers.remove(name)
         authenticatedPlayers.remove(name)
+        PremiumLoginVerifier.consumeVerified(name)
     }
 
     fun tick() {
@@ -85,7 +88,17 @@ object AuthManager {
         restrictPlayer(player)
     }
 
-    fun isPremiumSession(player: ServerPlayer): Boolean = player.server.usesAuthentication()
+    fun isPremiumSession(player: ServerPlayer): Boolean {
+        PremiumLoginVerifier.currentVerifiedUuid(player.name.string)?.let { return true }
+        return isPremiumIdentity(player.gameProfile.name, player.uuid, player.server.usesAuthentication())
+    }
+
+    /** online-mode / proxy-forwarded Mojang UUID detection for already-authenticated profiles. */
+    fun isPremiumIdentity(playerName: String, playerUuid: UUID, serverUsesAuthentication: Boolean): Boolean =
+        serverUsesAuthentication && playerUuid != offlineUuidForName(playerName)
+
+    fun offlineUuidForName(playerName: String): UUID =
+        UUID.nameUUIDFromBytes("OfflinePlayer:$playerName".toByteArray(StandardCharsets.UTF_8))
 
     fun getPlayerIp(player: ServerPlayer): String {
         val remote = player.connection.remoteAddress ?: return "unknown"

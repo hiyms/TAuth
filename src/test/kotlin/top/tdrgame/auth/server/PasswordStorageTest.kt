@@ -24,6 +24,7 @@ class PasswordStorageTest {
             passwordHash = "v1:hash",
             verified = true,
             lastLoginType = "online",
+            premiumUuid = UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7"),
             autoLoginMachineId = "machine",
             autoLoginIp = "127.0.0.1"
         )
@@ -70,6 +71,23 @@ class PasswordStorageTest {
             store.setPassword(playerName, "secondPassword")
             assertFalse(store.checkPassword(playerName, "firstPassword"))
             assertTrue(store.checkPassword(playerName, "secondPassword"))
+        } finally {
+            store.delete(playerName)
+            store.close()
+        }
+    }
+
+    @Test
+    fun `premium uuid is persisted by verification update`() {
+        val store = PasswordStorage { PasswordStorage.HashPolicy(16, 10000, 256) }
+        val playerName = "PremiumUser-${UUID.randomUUID()}"
+        val premiumUuid = UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7")
+        try {
+            store.setPassword(playerName, "password")
+            store.updateVerification(playerName, isPremium = true, loginType = "online", premiumUuid = premiumUuid)
+
+            assertEquals(premiumUuid, store.getPremiumUuid(playerName))
+            assertTrue(store.hasPremiumHistory(playerName))
         } finally {
             store.delete(playerName)
             store.close()

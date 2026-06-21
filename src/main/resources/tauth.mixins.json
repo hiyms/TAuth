@@ -6,6 +6,7 @@
     "refmap": "tauth.mixins.refmap.json",
     "mixins": [
         "CommandMixin",
+        "PremiumLoginMixin",
         "ServerGamePacketMixin"
     ],
     "injectors": {
