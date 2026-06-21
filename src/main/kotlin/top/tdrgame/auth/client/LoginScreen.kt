@@ -28,7 +28,7 @@ object LoginScreen {
         currentPassword = ""
         val group = WidgetGroup(0, 0, 176, 118).setClientSideWidget()
 
-        group.addWidget(ImageWidget(0, 0, 176, 118, ColorRectTexture(0xCC202020.toInt()).setRadius(6f))
+        group.addWidget(ImageWidget(0, 0, 176, 118, ColorRectTexture(0xFF202020.toInt()).setRadius(6f))
             .setBorder(1, 0xFF8A8A8A.toInt())
             .setClientSideWidget())
         group.addWidget(LabelWidget(12, 10, "§6§lTAuth 登录"))
@@ -46,6 +46,12 @@ object LoginScreen {
             { _ -> ClientAuthHandler.submitPassword(currentPassword) })
             .setClientSideWidget()
         group.addWidget(loginBtn)
+
+        val forgotBtn = ButtonWidget(100, 96, 64, 14,
+            TextTexture("§n忘记密码", 0xFFB8B8B8.toInt()),
+            { _ -> ClientAuthHandler.forgotPassword() })
+            .setClientSideWidget()
+        group.addWidget(forgotBtn)
 
         val player = Minecraft.getInstance().player
         return ModularUI(group, IUIHolder.EMPTY, player)

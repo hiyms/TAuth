@@ -30,7 +30,7 @@ object RegisterScreen {
         currentConfirm = ""
         val group = WidgetGroup(0, 0, 196, 146).setClientSideWidget()
 
-        group.addWidget(ImageWidget(0, 0, 196, 146, ColorRectTexture(0xCC202020.toInt()).setRadius(6f))
+        group.addWidget(ImageWidget(0, 0, 196, 146, ColorRectTexture(0xFF202020.toInt()).setRadius(6f))
             .setBorder(1, 0xFF8A8A8A.toInt())
             .setClientSideWidget())
         group.addWidget(LabelWidget(12, 10, "§6§lTAuth 注册"))

@@ -30,7 +30,7 @@ object AuthPackets {
     const val CODE_POLICY_DENIED = "POLICY_DENIED"
     const val CODE_ERROR = "ERROR"
 
-    private const val PROTOCOL_VERSION = "2"
+    private const val PROTOCOL_VERSION = "3"
     private val acceptsRemote = NetworkRegistry.acceptMissingOr(PROTOCOL_VERSION)
 
     val CHANNEL: SimpleChannel = NetworkRegistry.newSimpleChannel(
@@ -54,6 +54,9 @@ object AuthPackets {
         // 客户端 → 服务端：挑战响应
         CHANNEL.registerMessage(id++, ChallengeResponsePacket::class.java,
             ChallengeResponsePacket::encode, ChallengeResponsePacket::decode, ChallengeResponsePacket::handle)
+        // 客户端 → 服务端：忘记密码，提示联系管理员并断开连接
+        CHANNEL.registerMessage(id++, ForgotPasswordPacket::class.java,
+            ForgotPasswordPacket::encode, ForgotPasswordPacket::decode, ForgotPasswordPacket::handle)
         // 客户端 → 服务端：注册提交（已本地哈希）
         CHANNEL.registerMessage(id++, RegisterSubmitPacket::class.java,
             RegisterSubmitPacket::encode, RegisterSubmitPacket::decode, RegisterSubmitPacket::handle)
@@ -152,6 +155,24 @@ object AuthPackets {
         }
         companion object {
             fun decode(buf: FriendlyByteBuf) = ChallengeResponsePacket(buf)
+        }
+    }
+
+    /** 客户端 → 服务端：忘记密码，服务端断开连接并提示联系管理员。 */
+    class ForgotPasswordPacket {
+        constructor()
+        constructor(buf: FriendlyByteBuf)
+        fun encode(buf: FriendlyByteBuf) {}
+        fun handle(ctx: Supplier<NetworkEvent.Context>) {
+            val context = ctx.get()
+            context.enqueueWork {
+                val player = context.sender ?: return@enqueueWork
+                player.connection.disconnect(net.minecraft.network.chat.Component.literal("请联系管理重置密码"))
+            }
+            context.packetHandled = true
+        }
+        companion object {
+            fun decode(buf: FriendlyByteBuf) = ForgotPasswordPacket(buf)
         }
     }
 

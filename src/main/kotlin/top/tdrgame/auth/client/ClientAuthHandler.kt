@@ -78,6 +78,13 @@ object ClientAuthHandler {
         AuthPackets.sendToServer(AuthPackets.ChallengeResponsePacket(resp))
     }
 
+    /** 登录界面点击忘记密码：请求服务端断开并显示管理员重置提示。 */
+    fun forgotPassword() {
+        if (isAuthChannelAvailable()) {
+            AuthPackets.sendToServer(AuthPackets.ForgotPasswordPacket())
+        }
+    }
+
     /** 注册界面提交：本地哈希后发送注册包。 */
     fun submitRegister(password: String, confirm: String) {
         if (password.isEmpty()) {
