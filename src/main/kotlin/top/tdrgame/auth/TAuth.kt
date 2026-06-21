@@ -63,8 +63,8 @@ object TAuth {
         @JvmStatic
         @net.minecraftforge.eventbus.api.SubscribeEvent
         fun onCommonSetup(event: FMLCommonSetupEvent) {
-            // Common setup intentionally does not open/migrate the auth database.
-            // Migration is gated by auth.enabled during server lifecycle events.
+            // Common setup intentionally does not open the auth database.
+            // Database access is gated by auth.enabled during server lifecycle events.
         }
 
         @JvmStatic

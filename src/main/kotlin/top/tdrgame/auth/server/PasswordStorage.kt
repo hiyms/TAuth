@@ -18,7 +18,7 @@ data class PlayerAuthData(
     /** 主键：玩家名（大小写按游戏内实际名称存储）。 */
     @field:Id
     val playerName: String,
-    /** PBKDF2 哈希结果。新条目为 "v1:iter:keyBits:saltB64:hashB64"；迁移自 offlineauth 的为 "saltB64:hashB64"。 */
+    /** PBKDF2 哈希结果。新条目为 "v1:iter:keyBits:saltB64:hashB64"；旧 offlineauth 格式为 "saltB64:hashB64"。 */
     val passwordHash: String,
     /** 是否已证明拥有正版账号。true 时仅正版进入可免验证，离线进入仍需要 /login。 */
     val verified: Boolean = false,
@@ -71,7 +71,9 @@ class PlayerAuthDataConverter : EntityConverter<PlayerAuthData> {
  *
  * 数据文件：config/tauth/auth.db
  */
-class PasswordStorage {
+class PasswordStorage(
+    private val hashPolicyProvider: () -> HashPolicy = { PasswordStorage.configuredHashPolicy() }
+) {
 
     // 延迟打开数据库：客户端选装时构造本对象不会创建 auth.db，
     // 只有服务端真正访问 repo 时才落盘。
@@ -80,6 +82,12 @@ class PasswordStorage {
     companion object {
         /** offlineauth 默认加盐字节数。 */
         const val LEGACY_SALT_BYTES = 16
+
+        fun configuredHashPolicy(): HashPolicy = HashPolicy(
+            saltBytes = AuthConfig.saltBytes.get().coerceIn(LEGACY_SALT_BYTES, 64),
+            iterations = AuthConfig.iterations.get().coerceAtLeast(1000),
+            keyLengthBits = AuthConfig.keyLengthBits.get().coerceAtLeast(128)
+        )
     }
 
     private var db: Nitrite? = null
@@ -129,6 +137,24 @@ class PasswordStorage {
     fun changePassword(playerName: String, newPassword: String) {
         val data = repo.find(byName(playerName)).firstOrNull() ?: return
         repo.update(data.copy(passwordHash = hashPassword(newPassword)))
+        commit()
+    }
+
+    /** 由 OP 直接创建或覆盖玩家密码。 */
+    fun setPassword(playerName: String, newPassword: String) {
+        val hash = hashPassword(newPassword)
+        val data = repo.find(byName(playerName)).firstOrNull()
+        if (data == null) {
+            repo.insert(PlayerAuthData(playerName = playerName, passwordHash = hash))
+        } else {
+            repo.update(data.copy(
+                passwordHash = hash,
+                verified = false,
+                lastLoginType = null,
+                autoLoginMachineId = null,
+                autoLoginIp = null
+            ))
+        }
         commit()
     }
 
@@ -192,27 +218,7 @@ class PasswordStorage {
         return data.autoLoginMachineId == machineId && data.autoLoginIp == ip
     }
 
-    /** 获取所有已注册玩家名（迁移遍历用）。 */
-    fun allPlayerNames(): List<String> {
-        val result = mutableListOf<String>()
-        repo.find().toList().forEach { result.add(it.playerName) }
-        return result
-    }
-
-    /** 数据库是否为空，用于判断是否需要执行迁移。 */
-    fun isEmpty(): Boolean = !repo.find().iterator().hasNext()
-
-    /** 直接插入一条数据（迁移用）。 */
-    fun insertRaw(data: PlayerAuthData) {
-        repo.insert(data)
-        commit()
-    }
-
-    fun hashPolicy(): HashPolicy = HashPolicy(
-        saltBytes = AuthConfig.saltBytes.get().coerceIn(LEGACY_SALT_BYTES, 64),
-        iterations = AuthConfig.iterations.get().coerceAtLeast(1000),
-        keyLengthBits = AuthConfig.keyLengthBits.get().coerceAtLeast(128)
-    )
+    fun hashPolicy(): HashPolicy = hashPolicyProvider()
 
     data class HashPolicy(val saltBytes: Int, val iterations: Int, val keyLengthBits: Int)
 

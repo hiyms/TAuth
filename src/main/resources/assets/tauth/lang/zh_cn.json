@@ -1,6 +1,7 @@
 {
   "tauth.message.auth_disabled": "认证功能未启用。",
   "tauth.message.reset_success": "已重置 %s 的密码。该玩家需要重新注册。",
+  "tauth.message.set_password_success": "已设置 %s 的密码。",
   "tauth.message.register_password_mismatch": "两次输入的密码不一致！",
   "tauth.message.already_registered_login": "你已注册。请使用 /login 密码 登录！",
   "tauth.message.register_success": "注册成功！",

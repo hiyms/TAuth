@@ -16,7 +16,7 @@ import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 注册 /login、/register、/resetpasswd 命令。
+ * 注册 /login、/register、/resetpasswd、/setpasswd 命令。
  */
 object CommandHandler {
 
@@ -86,23 +86,47 @@ object CommandHandler {
                     .executes { ctx ->
                         val targetName = StringArgumentType.getString(ctx, "player")
                         if (!AuthConfig.enabled.get()) return@executes 1
-                        TAuthHolder.storage.delete(targetName)
-                        clearPendingChallenge(targetName)
-                        val target = ctx.source.server.playerList.getPlayerByName(targetName)
-                        if (target != null) {
-                            AuthManager.forcePending(target,
-                                isPremium = AuthManager.isPremiumSession(target),
-                                isVerified = false,
-                                isRegistered = false)
-                            EventHandler.hideInventoryForAuth(target)
-                            AuthPackets.sendToPlayerIfPresent(target, AuthPackets.StartAuthPacket())
-                        }
+                        resetPlayerPassword(targetName, ctx.source.server.playerList.getPlayerByName(targetName))
                         ctx.source.sendSuccess(
                             { ServerI18n.text(I18nKeys.RESET_SUCCESS, targetName).withStyle(net.minecraft.ChatFormatting.GREEN) },
                             true
                         )
                         return@executes 1
                     }))
+
+        // /setpasswd <player> <password> (OP only)
+        event.dispatcher.register(
+            Commands.literal("setpasswd")
+                .requires { it.hasPermission(2) }
+                .then(Commands.argument("player", StringArgumentType.word())
+                    .then(Commands.argument("password", StringArgumentType.string())
+                        .executes { ctx ->
+                            val targetName = StringArgumentType.getString(ctx, "player")
+                            if (!AuthConfig.enabled.get()) return@executes 1
+                            TAuthHolder.storage.setPassword(targetName, StringArgumentType.getString(ctx, "password"))
+                            resetAuthenticatedPlayerState(targetName, ctx.source.server.playerList.getPlayerByName(targetName))
+                            ctx.source.sendSuccess(
+                                { ServerI18n.text(I18nKeys.SET_PASSWORD_SUCCESS, targetName).withStyle(net.minecraft.ChatFormatting.GREEN) },
+                                true
+                            )
+                            return@executes 1
+                        })))
+    }
+
+    private fun resetPlayerPassword(targetName: String, target: ServerPlayer?) {
+        TAuthHolder.storage.delete(targetName)
+        resetAuthenticatedPlayerState(targetName, target)
+    }
+
+    private fun resetAuthenticatedPlayerState(targetName: String, target: ServerPlayer?) {
+        clearPendingChallenge(targetName)
+        if (target == null) return
+        AuthManager.forcePending(target,
+            isPremium = AuthManager.isPremiumSession(target),
+            isVerified = false,
+            isRegistered = false)
+        EventHandler.hideInventoryForAuth(target)
+        AuthPackets.sendToPlayerIfPresent(target, AuthPackets.StartAuthPacket())
     }
 
     private fun handleRegister(player: ServerPlayer, password: String, confirm: String) {

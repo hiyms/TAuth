@@ -35,11 +35,10 @@ object EventHandler {
     @JvmStatic
     fun onServerStarting(event: ServerStartingEvent) {
         if (!AuthConfig.enabled.get()) {
-            TAuth.LOGGER.info("Authentication is disabled; skipping migration and all server-side auth enforcement.")
+            TAuth.LOGGER.info("Authentication is disabled; skipping all server-side auth enforcement.")
             return
         }
-        TAuth.LOGGER.info("Authentication is enabled; running migration check and enabling auth enforcement.")
-        MigrationService.runIfNeeded(TAuthHolder.storage)
+        TAuth.LOGGER.info("Authentication is enabled; enabling auth enforcement.")
     }
 
     @SubscribeEvent

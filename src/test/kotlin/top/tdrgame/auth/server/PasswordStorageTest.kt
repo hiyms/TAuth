@@ -57,6 +57,26 @@ class PasswordStorageTest {
     }
 
     @Test
+    fun `set password creates or replaces player password`() {
+        val store = PasswordStorage { PasswordStorage.HashPolicy(16, 10000, 256) }
+        val playerName = "SetPasswordUser-${UUID.randomUUID()}"
+        try {
+            assertFalse(store.isRegistered(playerName))
+            store.setPassword(playerName, "firstPassword")
+            assertTrue(store.isRegistered(playerName))
+            assertTrue(store.checkPassword(playerName, "firstPassword"))
+            assertFalse(store.checkPassword(playerName, "secondPassword"))
+
+            store.setPassword(playerName, "secondPassword")
+            assertFalse(store.checkPassword(playerName, "firstPassword"))
+            assertTrue(store.checkPassword(playerName, "secondPassword"))
+        } finally {
+            store.delete(playerName)
+            store.close()
+        }
+    }
+
+    @Test
     fun `correct password verification succeeds`() {
         val hash = PasswordHasher.hash("securePassword123!", 16, 10000, 256)
         assertTrue(PasswordHasher.verify("securePassword123!", hash))

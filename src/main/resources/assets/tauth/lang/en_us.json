@@ -1,6 +1,7 @@
 {
   "tauth.message.auth_disabled": "Authentication is disabled.",
   "tauth.message.reset_success": "Reset %s's password. The player must register again.",
+  "tauth.message.set_password_success": "Set %s's password.",
   "tauth.message.register_password_mismatch": "Passwords do not match!",
   "tauth.message.already_registered_login": "You are already registered. Use /login <password> to log in!",
   "tauth.message.register_success": "Registration successful!",

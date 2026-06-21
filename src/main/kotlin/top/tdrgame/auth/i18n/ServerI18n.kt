@@ -10,6 +10,7 @@ object ServerI18n {
     fun fallback(key: String): String = when (key) {
         I18nKeys.AUTH_DISABLED -> "认证功能未启用。"
         I18nKeys.RESET_SUCCESS -> "已重置 %s 的密码。该玩家需要重新注册。"
+        I18nKeys.SET_PASSWORD_SUCCESS -> "已设置 %s 的密码。"
         I18nKeys.REGISTER_PASSWORD_MISMATCH -> "两次输入的密码不一致！"
         I18nKeys.ALREADY_REGISTERED_LOGIN -> "你已注册。请使用 /login 密码 登录！"
         I18nKeys.REGISTER_SUCCESS -> "注册成功！"

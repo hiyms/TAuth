@@ -3,6 +3,7 @@ package top.tdrgame.auth.i18n
 object I18nKeys {
     const val AUTH_DISABLED = "tauth.message.auth_disabled"
     const val RESET_SUCCESS = "tauth.message.reset_success"
+    const val SET_PASSWORD_SUCCESS = "tauth.message.set_password_success"
     const val REGISTER_PASSWORD_MISMATCH = "tauth.message.register_password_mismatch"
     const val ALREADY_REGISTERED_LOGIN = "tauth.message.already_registered_login"
     const val REGISTER_SUCCESS = "tauth.message.register_success"
