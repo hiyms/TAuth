@@ -2,7 +2,8 @@ package top.tdrgame.auth.client
 
 import com.lowdragmc.lowdraglib.gui.modular.IUIHolder
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI
-import com.lowdragmc.lowdraglib.gui.texture.ColorRectTexture
+import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup
+import com.lowdragmc.lowdraglib.gui.texture.ResourceBorderTexture
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget
@@ -30,8 +31,7 @@ object RegisterScreen {
         currentConfirm = ""
         val group = WidgetGroup(0, 0, 196, 146).setClientSideWidget()
 
-        group.addWidget(ImageWidget(0, 0, 196, 146, ColorRectTexture(0xFF202020.toInt()).setRadius(6f))
-            .setBorder(1, 0xFF8A8A8A.toInt())
+        group.addWidget(ImageWidget(0, 0, 196, 146, ResourceBorderTexture.BORDERED_BACKGROUND)
             .setClientSideWidget())
         group.addWidget(LabelWidget(12, 10, "§6§lTAuth 注册"))
         if (message.isNotEmpty()) {
@@ -39,17 +39,21 @@ object RegisterScreen {
         }
 
         group.addWidget(LabelWidget(12, 44, "§f密码"))
-        val passwordField = TextFieldWidget(78, 42, 106, 16, { currentPassword }, { currentPassword = it })
+        group.addWidget(ImageWidget(76, 41, 110, 18, ResourceBorderTexture.BAR)
+            .setClientSideWidget())
+        val passwordField = TextFieldWidget(80, 42, 102, 16, { currentPassword }, { currentPassword = it })
             .setClientSideWidget()
         group.addWidget(passwordField)
 
         group.addWidget(LabelWidget(12, 68, "§f再次输入密码"))
-        val confirmField = TextFieldWidget(78, 66, 106, 16, { currentConfirm }, { currentConfirm = it })
+        group.addWidget(ImageWidget(76, 65, 110, 18, ResourceBorderTexture.BAR)
+            .setClientSideWidget())
+        val confirmField = TextFieldWidget(80, 66, 102, 16, { currentConfirm }, { currentConfirm = it })
             .setClientSideWidget()
         group.addWidget(confirmField)
 
         val registerBtn = ButtonWidget(64, 102, 68, 18,
-            TextTexture("注册"),
+            GuiTextureGroup(ResourceBorderTexture.BUTTON_COMMON, TextTexture("注册")),
             { _ -> ClientAuthHandler.submitRegister(currentPassword, currentConfirm) })
             .setClientSideWidget()
         group.addWidget(registerBtn)

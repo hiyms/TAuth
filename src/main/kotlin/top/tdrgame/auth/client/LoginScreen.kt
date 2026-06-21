@@ -2,7 +2,8 @@ package top.tdrgame.auth.client
 
 import com.lowdragmc.lowdraglib.gui.modular.IUIHolder
 import com.lowdragmc.lowdraglib.gui.modular.ModularUI
-import com.lowdragmc.lowdraglib.gui.texture.ColorRectTexture
+import com.lowdragmc.lowdraglib.gui.texture.GuiTextureGroup
+import com.lowdragmc.lowdraglib.gui.texture.ResourceBorderTexture
 import com.lowdragmc.lowdraglib.gui.texture.TextTexture
 import com.lowdragmc.lowdraglib.gui.widget.ButtonWidget
 import com.lowdragmc.lowdraglib.gui.widget.ImageWidget
@@ -28,8 +29,7 @@ object LoginScreen {
         currentPassword = ""
         val group = WidgetGroup(0, 0, 176, 118).setClientSideWidget()
 
-        group.addWidget(ImageWidget(0, 0, 176, 118, ColorRectTexture(0xFF202020.toInt()).setRadius(6f))
-            .setBorder(1, 0xFF8A8A8A.toInt())
+        group.addWidget(ImageWidget(0, 0, 176, 118, ResourceBorderTexture.BORDERED_BACKGROUND)
             .setClientSideWidget())
         group.addWidget(LabelWidget(12, 10, "§6§lTAuth 登录"))
         if (message.isNotEmpty()) {
@@ -37,12 +37,14 @@ object LoginScreen {
         }
 
         group.addWidget(LabelWidget(12, 44, "§f密码"))
-        val passwordField = TextFieldWidget(54, 42, 110, 16, { currentPassword }, { currentPassword = it })
+        group.addWidget(ImageWidget(52, 41, 114, 18, ResourceBorderTexture.BAR)
+            .setClientSideWidget())
+        val passwordField = TextFieldWidget(56, 42, 106, 16, { currentPassword }, { currentPassword = it })
             .setClientSideWidget()
         group.addWidget(passwordField)
 
         val loginBtn = ButtonWidget(54, 74, 68, 18,
-            TextTexture("登录"),
+            GuiTextureGroup(ResourceBorderTexture.BUTTON_COMMON, TextTexture("登录")),
             { _ -> ClientAuthHandler.submitPassword(currentPassword) })
             .setClientSideWidget()
         group.addWidget(loginBtn)
