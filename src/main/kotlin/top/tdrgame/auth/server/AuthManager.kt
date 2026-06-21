@@ -85,6 +85,8 @@ object AuthManager {
         restrictPlayer(player)
     }
 
+    fun isPremiumSession(player: ServerPlayer): Boolean = player.server.usesAuthentication()
+
     fun getPlayerIp(player: ServerPlayer): String {
         val remote = player.connection.remoteAddress ?: return "unknown"
         if (remote is InetSocketAddress) {

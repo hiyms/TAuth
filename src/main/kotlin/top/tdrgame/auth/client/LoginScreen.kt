@@ -49,6 +49,13 @@ object LoginScreen {
             .setClientSideWidget()
         group.addWidget(loginBtn)
 
+        val autoLoginBtn = ButtonWidget(12, 96, 78, 14,
+            TextTexture { "自动登录: ${if (ClientAuthHandler.isAutoLoginEnabled()) "开" else "关"}" }
+                .setColor(0xFFB8B8B8.toInt()),
+            { _ -> ClientAuthHandler.toggleAutoLoginEnabled() })
+            .setClientSideWidget()
+        group.addWidget(autoLoginBtn)
+
         val forgotBtn = ButtonWidget(100, 96, 64, 14,
             TextTexture("§n忘记密码", 0xFFB8B8B8.toInt()),
             { _ -> ClientAuthHandler.forgotPassword() })

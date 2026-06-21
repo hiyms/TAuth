@@ -57,7 +57,7 @@ object EventHandler {
             return
         }
 
-        val isPremium = TrueUuidBridge.isPremium(name)
+        val isPremium = AuthManager.isPremiumSession(player)
         val storage = TAuthHolder.storage
         val data = storage.get(name)
         val isVerified = data?.verified == true

@@ -89,7 +89,7 @@ object CommandHandler {
                         val target = ctx.source.server.playerList.getPlayerByName(targetName)
                         if (target != null) {
                             AuthManager.forcePending(target,
-                                isPremium = TrueUuidBridge.isPremium(target.name.string),
+                                isPremium = AuthManager.isPremiumSession(target),
                                 isVerified = false,
                                 isRegistered = false)
                             EventHandler.hideInventoryForAuth(target)
@@ -119,7 +119,7 @@ object CommandHandler {
             return
         }
 
-        val isPremium = TrueUuidBridge.isPremium(name)
+        val isPremium = AuthManager.isPremiumSession(player)
         val loginType = if (isPremium) "online" else "offline"
         storage.register(name, password, verified = isPremium, loginType = loginType)
         finishLogin(player)
@@ -143,7 +143,7 @@ object CommandHandler {
             return
         }
 
-        val isPremium = TrueUuidBridge.isPremium(name)
+        val isPremium = AuthManager.isPremiumSession(player)
         val loginType = if (isPremium) "online" else "offline"
         storage.updateVerification(name, isPremium = isPremium, loginType = loginType)
 
@@ -238,7 +238,7 @@ object CommandHandler {
                 result(false, AuthPackets.CODE_BAD_PASSWORD, "密码错误！"))
             return
         }
-        val isPremium = TrueUuidBridge.isPremium(name)
+        val isPremium = AuthManager.isPremiumSession(player)
         val loginType = if (isPremium) "online" else "offline"
         TAuthHolder.storage.updateVerification(name, isPremium = isPremium, loginType = loginType)
         if (!session.machineId.isNullOrBlank()) {
@@ -258,7 +258,7 @@ object CommandHandler {
             return
         }
         val name = player.name.string
-        val isPremium = TrueUuidBridge.isPremium(name)
+        val isPremium = AuthManager.isPremiumSession(player)
         val loginType = if (isPremium) "online" else "offline"
         val parsed = PasswordHasher.parse(packet.passwordHash)
         if (parsed == null) {

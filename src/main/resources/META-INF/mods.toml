@@ -27,9 +27,3 @@ displayTest="IGNORE_ALL_VERSION"
     versionRange="[1.0,2.0)"
     ordering="NONE"
     side="CLIENT"
-[[dependencies.${modId}]]
-    modId="trueuuid"
-    mandatory=false
-    versionRange="[1.0,2.0)"
-    ordering="AFTER"
-    side="BOTH"

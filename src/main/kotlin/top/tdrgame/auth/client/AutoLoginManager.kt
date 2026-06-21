@@ -24,7 +24,8 @@ object AutoLoginManager {
     data class AutoLoginCache(
         val machineId: UUID,
         val derivedKey: ByteArray,
-        val lastServer: String
+        val lastServer: String,
+        val enabled: Boolean = true
     )
 
     private fun generateMachineId(): UUID = UUID.randomUUID()
@@ -33,20 +34,40 @@ object AutoLoginManager {
         val existing = load()
         if (existing != null) return existing.machineId
         val id = generateMachineId()
-        saveRaw(id, ByteArray(0), "")
+        saveRaw(id, ByteArray(0), "", true)
         return id
     }
 
     fun save(derivedKey: ByteArray, lastServer: String) {
-        saveRaw(load()?.machineId ?: generateMachineId(), derivedKey, lastServer)
+        val existing = load()
+        saveRaw(existing?.machineId ?: generateMachineId(), derivedKey, lastServer, existing?.enabled ?: true)
     }
 
-    private fun saveRaw(machineId: UUID, derivedKey: ByteArray, lastServer: String) {
+    fun isAutoLoginEnabled(): Boolean = load()?.enabled ?: true
+
+    fun setAutoLoginEnabled(enabled: Boolean) {
+        val existing = load()
+        saveRaw(
+            existing?.machineId ?: generateMachineId(),
+            existing?.derivedKey ?: ByteArray(0),
+            existing?.lastServer ?: "",
+            enabled
+        )
+    }
+
+    fun toggleAutoLoginEnabled(): Boolean {
+        val enabled = !isAutoLoginEnabled()
+        setAutoLoginEnabled(enabled)
+        return enabled
+    }
+
+    private fun saveRaw(machineId: UUID, derivedKey: ByteArray, lastServer: String, enabled: Boolean) {
         file.parentFile?.mkdirs()
         val tag = CompoundTag().apply {
             putUUID("machineId", machineId)
             putByteArray("derivedKey", derivedKey)
             putString("lastServer", lastServer)
+            putBoolean("autoLoginEnabled", enabled)
         }
         file.outputStream().use { NbtIo.writeCompressed(tag, it) }
     }
@@ -59,7 +80,8 @@ object AutoLoginManager {
                 AutoLoginCache(
                     machineId = tag.getUUID("machineId"),
                     derivedKey = tag.getByteArray("derivedKey"),
-                    lastServer = tag.getString("lastServer")
+                    lastServer = tag.getString("lastServer"),
+                    enabled = if (tag.contains("autoLoginEnabled")) tag.getBoolean("autoLoginEnabled") else true
                 )
             }
         } catch (_: Exception) {

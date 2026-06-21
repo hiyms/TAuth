@@ -58,6 +58,13 @@ object RegisterScreen {
             .setClientSideWidget()
         group.addWidget(registerBtn)
 
+        val autoLoginBtn = ButtonWidget(12, 124, 78, 14,
+            TextTexture { "自动登录: ${if (ClientAuthHandler.isAutoLoginEnabled()) "开" else "关"}" }
+                .setColor(0xFFB8B8B8.toInt()),
+            { _ -> ClientAuthHandler.toggleAutoLoginEnabled() })
+            .setClientSideWidget()
+        group.addWidget(autoLoginBtn)
+
         val player = Minecraft.getInstance().player
         return ModularUI(group, IUIHolder.EMPTY, player)
     }

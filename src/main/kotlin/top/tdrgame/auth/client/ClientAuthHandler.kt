@@ -37,10 +37,11 @@ object ClientAuthHandler {
         val mc = Minecraft.getInstance()
         val name = mc.user?.name ?: return false
         if (!isAuthChannelAvailable()) return false
-        val machineId = AutoLoginManager.machineId().toString()
+        val autoLoginEnabled = AutoLoginManager.isAutoLoginEnabled()
+        val machineId = if (autoLoginEnabled) AutoLoginManager.machineId().toString() else null
         val cache = AutoLoginManager.load()
         val server = currentServerId()
-        val mode = if (cache != null && cache.lastServer == server && cache.derivedKey.isNotEmpty()) "auto" else "login"
+        val mode = if (autoLoginEnabled && cache != null && cache.lastServer == server && cache.derivedKey.isNotEmpty()) "auto" else "login"
         loginMessage = ""
         registerMessage = ""
         authFlowEnding = false
@@ -55,7 +56,7 @@ object ClientAuthHandler {
 
     /** 收到服务端挑战：尝试自动登录，否则弹登录界面。 */
     fun onChallenge(packet: AuthPackets.ChallengePacket) {
-        if (packet.autoLogin) {
+        if (packet.autoLogin && AutoLoginManager.isAutoLoginEnabled()) {
             val cache = AutoLoginManager.load()
             val currentServer = currentServerId()
             if (cache != null && cache.lastServer == currentServer && cache.derivedKey.isNotEmpty()) {
@@ -90,6 +91,10 @@ object ClientAuthHandler {
         }
     }
 
+    fun isAutoLoginEnabled(): Boolean = AutoLoginManager.isAutoLoginEnabled()
+
+    fun toggleAutoLoginEnabled(): Boolean = AutoLoginManager.toggleAutoLoginEnabled()
+
     /** 注册界面提交：本地哈希后发送注册包。 */
     fun submitRegister(password: String, confirm: String) {
         if (password.isEmpty()) {
@@ -107,7 +112,8 @@ object ClientAuthHandler {
             pendingRegisterSaltBytes(),
             pendingRegisterIterations(),
             pendingRegisterKeyBits())
-        AuthPackets.sendToServer(AuthPackets.RegisterSubmitPacket(hash.storedHash, AutoLoginManager.machineId().toString()))
+        val machineId = if (AutoLoginManager.isAutoLoginEnabled()) AutoLoginManager.machineId().toString() else null
+        AuthPackets.sendToServer(AuthPackets.RegisterSubmitPacket(hash.storedHash, machineId))
     }
 
     /** 收到登录/注册结果：更新界面与自动登录缓存。 */
@@ -120,7 +126,7 @@ object ClientAuthHandler {
             authFlowEnding = true
             closeScreen()
             val key = packet.rememberKey
-            if (key != null && key.isNotEmpty()) {
+            if (key != null && key.isNotEmpty() && AutoLoginManager.isAutoLoginEnabled()) {
                 AutoLoginManager.save(key, currentServerId())
             }
             if (packet.message.isNotEmpty()) {
@@ -139,22 +145,24 @@ object ClientAuthHandler {
             AuthPackets.CODE_AUTO_DENIED -> {
                 pendingChallenge = null
                 loginMessage = ""
-                AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(
-                    "login", mc.user?.name ?: return, AutoLoginManager.machineId().toString()))
+                sendLoginRequest("login", mc.user?.name ?: return)
             }
             AuthPackets.CODE_BAD_PASSWORD -> {
                 pendingChallenge = null
                 loginMessage = "密码错误。"
-                AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(
-                    "login", mc.user?.name ?: return, AutoLoginManager.machineId().toString()))
+                sendLoginRequest("login", mc.user?.name ?: return)
             }
             else -> {
                 pendingChallenge = null
                 loginMessage = ""
-                AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(
-                    "login", mc.user?.name ?: return, AutoLoginManager.machineId().toString()))
+                sendLoginRequest("login", mc.user?.name ?: return)
             }
         }
+    }
+
+    private fun sendLoginRequest(mode: String, name: String) {
+        val machineId = if (AutoLoginManager.isAutoLoginEnabled()) AutoLoginManager.machineId().toString() else null
+        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
     }
 
     private data class RegisterPolicy(val saltBytes: Int, val iterations: Int, val keyBits: Int)
