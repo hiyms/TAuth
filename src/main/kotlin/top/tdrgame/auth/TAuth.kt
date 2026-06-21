@@ -70,8 +70,8 @@ object TAuth {
         @net.minecraftforge.eventbus.api.SubscribeEvent
         fun onConfigLoading(event: ModConfigEvent.Loading) {
             if (event.config.modId == ID && event.config.fileName == "tauth-server.toml") {
-                LOGGER.info("TAuth config loaded from {}: auth.enabled={}, timeout={}s, maxFailAttempts={}",
-                    event.config.fullPath, AuthConfig.enabled.get(), AuthConfig.loginTimeoutSeconds.get(), AuthConfig.maxFailAttempts.get())
+                LOGGER.info("TAuth config loaded ({}): auth.enabled={}, timeout={}s, maxFailAttempts={}",
+                    event.config.fileName, AuthConfig.enabled.get(), AuthConfig.loginTimeoutSeconds.get(), AuthConfig.maxFailAttempts.get())
             }
         }
 
@@ -79,8 +79,8 @@ object TAuth {
         @net.minecraftforge.eventbus.api.SubscribeEvent
         fun onConfigReloading(event: ModConfigEvent.Reloading) {
             if (event.config.modId == ID && event.config.fileName == "tauth-server.toml") {
-                LOGGER.info("TAuth config reloaded from {}: auth.enabled={}, timeout={}s, maxFailAttempts={}",
-                    event.config.fullPath, AuthConfig.enabled.get(), AuthConfig.loginTimeoutSeconds.get(), AuthConfig.maxFailAttempts.get())
+                LOGGER.info("TAuth config reloaded ({}): auth.enabled={}, timeout={}s, maxFailAttempts={}",
+                    event.config.fileName, AuthConfig.enabled.get(), AuthConfig.loginTimeoutSeconds.get(), AuthConfig.maxFailAttempts.get())
             }
         }
     }
