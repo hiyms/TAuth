@@ -12,7 +12,6 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import top.tdrgame.auth.config.AuthConfig;
 import top.tdrgame.auth.server.AuthManager;
 
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import java.util.Locale;
 import java.util.Set;
 
@@ -40,16 +39,12 @@ public class CommandMixin {
     private int onExecuteCommand(
         CommandDispatcher<CommandSourceStack> dispatcher,
         ParseResults<CommandSourceStack> parse
-    ) {
+    ) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         CommandSourceStack source = parse.getContext().getSource();
         ServerPlayer player = source.getPlayer();
 
         if (!AuthConfig.isEnabled()) {
-            try {
-                return dispatcher.execute(parse);
-            } catch (CommandSyntaxException e) {
-                return 0;
-            }
+            return dispatcher.execute(parse);
         }
 
         if (player != null && !AuthManager.INSTANCE.isAuthenticated(player)) {
@@ -64,11 +59,6 @@ public class CommandMixin {
             }
         }
 
-        try {
-            return dispatcher.execute(parse);
-        } catch (CommandSyntaxException e) {
-            // 命令语法错误，静默处理（原始行为）
-            return 0;
-        }
+        return dispatcher.execute(parse);
     }
 }

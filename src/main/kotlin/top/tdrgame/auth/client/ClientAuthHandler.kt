@@ -32,6 +32,7 @@ object ClientAuthHandler {
     fun onClientPlayerJoin() {
         val mc = Minecraft.getInstance()
         val name = mc.user?.name ?: return
+        if (!isAuthChannelAvailable()) return
         val machineId = AutoLoginManager.machineId().toString()
         val cache = AutoLoginManager.load()
         val server = currentServerId()
@@ -166,6 +167,12 @@ object ClientAuthHandler {
             }
             currentScreen = null
         }
+    }
+
+    /** 当前连接是否支持 TAuth 网络通道。 */
+    private fun isAuthChannelAvailable(): Boolean {
+        val connection = Minecraft.getInstance().connection?.connection ?: return false
+        return AuthPackets.CHANNEL.isRemotePresent(connection)
     }
 
     /** 取当前连接的服务端地址（用于自动登录匹配）。 */

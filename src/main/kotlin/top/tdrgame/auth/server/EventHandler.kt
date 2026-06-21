@@ -82,6 +82,7 @@ object EventHandler {
         val player = event.entity as? ServerPlayer ?: return
         // 下线前恢复已清空的背包和原始状态，避免服务端把空背包/Adventure 状态保存进 playerdata。
         restoreInventory(player, notify = false)
+        CommandHandler.clearPendingChallenge(player.name.string)
         AuthManager.onPlayerLeave(player)
         inventoryBackups.remove(player.name.string)
     }
@@ -96,6 +97,7 @@ object EventHandler {
         AuthManager.collectKicks().forEach { (name, reason) ->
             val player = event.server.playerList.getPlayerByName(name) ?: return@forEach
             restoreInventory(player, notify = false)
+            CommandHandler.clearPendingChallenge(name)
             AuthManager.restoreOriginalState(player)
             player.connection.disconnect(Component.literal(reason))
         }

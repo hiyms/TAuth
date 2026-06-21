@@ -85,7 +85,7 @@ object CommandHandler {
                         val targetName = StringArgumentType.getString(ctx, "player")
                         if (!AuthConfig.enabled.get()) return@executes 1
                         TAuthHolder.storage.delete(targetName)
-                        pendingChallenges.remove(targetName)
+                        clearPendingChallenge(targetName)
                         val target = ctx.source.server.playerList.getPlayerByName(targetName)
                         if (target != null) {
                             AuthManager.forcePending(target,
@@ -172,6 +172,11 @@ object CommandHandler {
 
     /** 服务端待处理挑战：玩家名 → challenge 会话。仅在内存，登录完成即清除。 */
     private val pendingChallenges = ConcurrentHashMap<String, ChallengeSession>()
+
+    /** 玩家离线、被重置或被踢出时清理未完成的挑战会话。 */
+    fun clearPendingChallenge(playerName: String) {
+        pendingChallenges.remove(playerName)
+    }
 
     /** 客户端发起登录请求：生成挑战并回发。 */
     fun handleLoginRequest(player: ServerPlayer, packet: AuthPackets.LoginRequestPacket) {
