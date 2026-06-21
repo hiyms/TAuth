@@ -24,7 +24,8 @@ object ClientAuthHandler {
     /** 当前展示的认证界面，用于登录成功后关闭。 */
     private var currentScreen: ModularUIGuiContainer? = null
 
-    private var lastMessage: String = ""
+    private var loginMessage: String = ""
+    private var registerMessage: String = ""
 
     /**
      * 由客户端玩家加入服务器事件触发：向服务端发起登录请求。
@@ -37,6 +38,8 @@ object ClientAuthHandler {
         val cache = AutoLoginManager.load()
         val server = currentServerId()
         val mode = if (cache != null && cache.lastServer == server && cache.derivedKey.isNotEmpty()) "auto" else "login"
+        loginMessage = ""
+        registerMessage = ""
         AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
         return true
     }
@@ -64,7 +67,11 @@ object ClientAuthHandler {
     /** 登录界面提交密码：本地 PBKDF2 后回应挑战。 */
     fun submitPassword(password: String) {
         val challenge = pendingChallenge ?: return
-        if (password.isEmpty()) return
+        if (password.isEmpty()) {
+            loginMessage = "请输入密码。"
+            showLoginScreen()
+            return
+        }
         val key = ClientHashUtil.derive(
             password, challenge.salt, challenge.iterations, challenge.keyBits)
         val resp = AuthPackets.challengeResponse(key, challenge.challenge)
@@ -73,8 +80,13 @@ object ClientAuthHandler {
 
     /** 注册界面提交：本地哈希后发送注册包。 */
     fun submitRegister(password: String, confirm: String) {
-        if (password.isEmpty() || password != confirm) {
-            lastMessage = "两次输入的密码不一致。"
+        if (password.isEmpty()) {
+            registerMessage = "请输入密码。"
+            showRegisterScreen()
+            return
+        }
+        if (password != confirm) {
+            registerMessage = "两次输入的密码不一致。"
             showRegisterScreen()
             return
         }
@@ -89,9 +101,10 @@ object ClientAuthHandler {
     /** 收到登录/注册结果：更新界面与自动登录缓存。 */
     fun onLoginResult(packet: AuthPackets.LoginResultPacket) {
         val mc = Minecraft.getInstance()
-        lastMessage = packet.message
         if (packet.success) {
             pendingChallenge = null
+            loginMessage = ""
+            registerMessage = ""
             closeScreen()
             val key = packet.rememberKey
             if (key != null && key.isNotEmpty()) {
@@ -104,22 +117,27 @@ object ClientAuthHandler {
             return
         }
 
-        if (packet.message.isNotEmpty()) {
-            mc.player?.displayClientMessage(
-                net.minecraft.network.chat.Component.literal("§c${packet.message}"), false)
-        }
         when (packet.code) {
             AuthPackets.CODE_NOT_REGISTERED -> {
                 pendingRegisterPolicy = RegisterPolicy(packet.saltBytes, packet.iterations, packet.keyBits)
+                registerMessage = ""
                 showRegisterScreen()
             }
             AuthPackets.CODE_AUTO_DENIED -> {
                 pendingChallenge = null
+                loginMessage = ""
+                AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(
+                    "login", mc.user?.name ?: return, AutoLoginManager.machineId().toString()))
+            }
+            AuthPackets.CODE_BAD_PASSWORD -> {
+                pendingChallenge = null
+                loginMessage = "密码错误。"
                 AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(
                     "login", mc.user?.name ?: return, AutoLoginManager.machineId().toString()))
             }
             else -> {
                 pendingChallenge = null
+                loginMessage = ""
                 AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(
                     "login", mc.user?.name ?: return, AutoLoginManager.machineId().toString()))
             }
@@ -137,7 +155,7 @@ object ClientAuthHandler {
     private fun showLoginScreen() {
         val mc = Minecraft.getInstance()
         mc.execute {
-            val ui = LoginScreen.create(lastMessage)
+            val ui = LoginScreen.create(loginMessage)
             ui.initWidgets()
             val screen = ModularUIGuiContainer(ui, 0)
             currentScreen = screen
@@ -145,21 +163,16 @@ object ClientAuthHandler {
         }
     }
 
-    /** 切换到注册界面。由登录界面的「注册」按钮调用。 */
-    fun showRegisterScreen() {
+    /** 显示注册界面。 */
+    private fun showRegisterScreen() {
         val mc = Minecraft.getInstance()
         mc.execute {
-            val ui = RegisterScreen.create(lastMessage)
+            val ui = RegisterScreen.create(registerMessage)
             ui.initWidgets()
             val screen = ModularUIGuiContainer(ui, 0)
             currentScreen = screen
             mc.setScreen(screen)
         }
-    }
-
-    /** 从注册界面返回登录界面。 */
-    fun showLoginScreenFromRegister() {
-        showLoginScreen()
     }
 
     /** 关闭当前认证界面。 */

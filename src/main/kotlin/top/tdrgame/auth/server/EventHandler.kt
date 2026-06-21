@@ -120,7 +120,6 @@ object EventHandler {
         if (!AuthConfig.enabled.get()) return
         if (!AuthManager.isAuthenticated(event.player)) {
             event.isCanceled = true
-            event.player.sendSystemMessage(Component.literal("§c未登录禁止发言！"))
         }
     }
 
@@ -130,7 +129,6 @@ object EventHandler {
         val player = event.player as? ServerPlayer ?: return
         if (!AuthManager.isAuthenticated(player)) {
             event.isCanceled = true
-            player.sendSystemMessage(Component.literal("§c未登录禁止破坏方块！"))
         }
     }
 
@@ -140,7 +138,6 @@ object EventHandler {
         val player = event.entity as? ServerPlayer ?: return
         if (!AuthManager.isAuthenticated(player)) {
             event.isCanceled = true
-            player.sendSystemMessage(Component.literal("§c未登录禁止放置方块！"))
         }
     }
 
@@ -150,7 +147,6 @@ object EventHandler {
         val player = event.player as? ServerPlayer ?: return
         if (!AuthManager.isAuthenticated(player)) {
             event.isCanceled = true
-            player.sendSystemMessage(Component.literal("§c未登录禁止丢弃物品！"))
         }
     }
 
@@ -169,7 +165,6 @@ object EventHandler {
         val player = event.entity as? ServerPlayer ?: return
         if (!AuthManager.isAuthenticated(player)) {
             event.isCanceled = true
-            player.sendSystemMessage(Component.literal("§c未登录禁止交互！"))
         }
     }
 
@@ -179,7 +174,6 @@ object EventHandler {
         val player = event.entity as? ServerPlayer ?: return
         if (!AuthManager.isAuthenticated(player)) {
             event.isCanceled = true
-            player.sendSystemMessage(Component.literal("§c未登录禁止攻击！"))
         }
     }
 
@@ -198,7 +192,6 @@ object EventHandler {
         val attacker = event.source.entity as? ServerPlayer
         if (attacker != null && !AuthManager.isAuthenticated(attacker)) {
             event.isCanceled = true
-            attacker.sendSystemMessage(Component.literal("§c未登录禁止攻击！"))
             return
         }
         val player = event.entity as? ServerPlayer ?: return
@@ -234,7 +227,7 @@ object EventHandler {
         restoreInventory(player, notify = true)
     }
 
-    fun restoreInventory(player: ServerPlayer, notify: Boolean) {
+    fun restoreInventory(player: ServerPlayer, @Suppress("UNUSED_PARAMETER") notify: Boolean) {
         val name = player.name.string
         inventoryBackups.remove(name)
         val backup = InventoryBackupStore.load(name) ?: return
@@ -242,9 +235,6 @@ object EventHandler {
         player.inventoryMenu.broadcastChanges()
         player.containerMenu.broadcastChanges()
         InventoryBackupStore.consume(name)
-        if (notify) {
-            player.sendSystemMessage(Component.literal("§a背包已恢复。"))
-        }
     }
 }
 

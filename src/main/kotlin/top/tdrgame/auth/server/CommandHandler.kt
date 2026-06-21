@@ -93,8 +93,7 @@ object CommandHandler {
                                 isVerified = false,
                                 isRegistered = false)
                             EventHandler.hideInventoryForAuth(target)
-                            target.sendSystemMessage(Component.literal(
-                                "§c你的密码已被管理员重置，请重新 /register。"))
+                            AuthPackets.sendToPlayerIfPresent(target, AuthPackets.StartAuthPacket())
                         }
                         ctx.source.sendSuccess(
                             { Component.literal("§a已重置 $targetName 的密码。该玩家需要重新注册。") },
@@ -124,7 +123,7 @@ object CommandHandler {
         val loginType = if (isPremium) "online" else "offline"
         storage.register(name, password, verified = isPremium, loginType = loginType)
         finishLogin(player)
-        player.sendSystemMessage(Component.literal("§a注册成功，已自动登录！"))
+        player.sendSystemMessage(Component.literal("§a注册成功！"))
     }
 
     private fun handleLogin(player: ServerPlayer, password: String) {
@@ -277,7 +276,7 @@ object CommandHandler {
         }
         finishLogin(player)
         AuthPackets.sendToPlayer(player,
-            result(true, AuthPackets.CODE_REGISTER_OK, "注册成功，已自动登录！",
+            result(true, AuthPackets.CODE_REGISTER_OK, "注册成功！",
                 rememberKey = if (!packet.machineId.isNullOrBlank()) parsed.hash else null))
     }
 
