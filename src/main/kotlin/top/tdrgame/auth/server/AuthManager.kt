@@ -4,6 +4,8 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.GameType
 import top.tdrgame.auth.state.AuthStateMachine
 import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -24,6 +26,7 @@ object AuthManager {
     private val pendingPlayers = ConcurrentHashMap<String, AuthStateMachine>()
     private val authenticatedPlayers = ConcurrentHashMap.newKeySet<String>()
     private val restrictionSnapshots = ConcurrentHashMap<String, RestrictionSnapshot>()
+    private val premiumProofs = ConcurrentHashMap.newKeySet<String>()
 
     fun onPlayerJoin(
         player: ServerPlayer,
@@ -47,6 +50,7 @@ object AuthManager {
         restoreOriginalState(player)
         pendingPlayers.remove(name)
         authenticatedPlayers.remove(name)
+        premiumProofs.remove(name)
     }
 
     fun tick() {
@@ -85,7 +89,23 @@ object AuthManager {
         restrictPlayer(player)
     }
 
-    fun isPremiumSession(player: ServerPlayer): Boolean = player.server.usesAuthentication()
+    fun isPremiumSession(player: ServerPlayer): Boolean =
+        premiumProofs.contains(player.name.string) ||
+            isPremiumIdentity(player.gameProfile.name, player.uuid, player.server.usesAuthentication())
+
+    fun markPremiumSession(player: ServerPlayer) {
+        premiumProofs.add(player.name.string)
+    }
+
+    /**
+     * 在不依赖外部模组时，只有服务器启用 Mojang 会话验证且玩家 UUID 不是离线 UUID，
+     * 才能把本次会话视为可证明的正版会话。
+     */
+    fun isPremiumIdentity(playerName: String, playerUuid: UUID, serverUsesAuthentication: Boolean): Boolean =
+        serverUsesAuthentication && playerUuid != offlineUuidForName(playerName)
+
+    fun offlineUuidForName(playerName: String): UUID =
+        UUID.nameUUIDFromBytes("OfflinePlayer:$playerName".toByteArray(StandardCharsets.UTF_8))
 
     fun getPlayerIp(player: ServerPlayer): String {
         val remote = player.connection.remoteAddress ?: return "unknown"

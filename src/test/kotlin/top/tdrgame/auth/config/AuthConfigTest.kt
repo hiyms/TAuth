@@ -10,4 +10,10 @@ class AuthConfigTest {
         assertTrue(AuthConfig.autoLoginEnabled.getDefault())
         assertTrue(AuthConfig.autoLoginEnabled.path == listOf("client", "autoLoginEnabled"))
     }
+
+    @Test
+    fun `premium session proof server config defaults to enabled`() {
+        assertTrue(AuthConfig.premiumSessionProofEnabled.getDefault())
+        assertTrue(AuthConfig.premiumSessionProofEnabled.path == listOf("auth", "premiumSessionProofEnabled"))
+    }
 }

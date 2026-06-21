@@ -78,7 +78,9 @@ object EventHandler {
         if (!AuthManager.isAuthenticated(player)) {
             TAuth.LOGGER.info("Auth enforcement active for player {}; hiding inventory and waiting for login/register.", name)
             hideInventoryForAuth(player)
-            AuthPackets.sendToPlayerIfPresent(player, AuthPackets.StartAuthPacket())
+            if (!CommandHandler.requestPremiumProof(player)) {
+                AuthPackets.sendToPlayerIfPresent(player, AuthPackets.StartAuthPacket())
+            }
         } else {
             TAuth.LOGGER.info("Player {} is already authenticated by policy; no login prompt required.", name)
         }
