@@ -1,6 +1,8 @@
 package top.tdrgame.auth
 
 import net.minecraftforge.common.MinecraftForge
+import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent
 import net.minecraftforge.fml.event.config.ModConfigEvent
@@ -48,6 +50,11 @@ object TAuth {
         MOD_BUS.register(ModEvents::class.java)
         MinecraftForge.EVENT_BUS.register(EventHandler::class.java)
         MinecraftForge.EVENT_BUS.register(CommandHandler::class.java)
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
+            Runnable {
+                MinecraftForge.EVENT_BUS.register(Class.forName("top.tdrgame.auth.client.ClientEventListener"))
+            }
+        }
         LOGGER.info("Registered TAuth mod and Forge static event handler classes.")
     }
 

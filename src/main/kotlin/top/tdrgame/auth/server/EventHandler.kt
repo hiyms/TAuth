@@ -14,6 +14,7 @@ import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import top.tdrgame.auth.TAuth
 import top.tdrgame.auth.config.AuthConfig
+import top.tdrgame.auth.network.AuthPackets
 
 /**
  * 事件拦截层：限制未认证玩家的所有敏感行为。
@@ -77,6 +78,7 @@ object EventHandler {
         if (!AuthManager.isAuthenticated(player)) {
             TAuth.LOGGER.info("Auth enforcement active for player {}; hiding inventory and waiting for login/register.", name)
             hideInventoryForAuth(player)
+            AuthPackets.sendToPlayerIfPresent(player, AuthPackets.StartAuthPacket())
         } else {
             TAuth.LOGGER.info("Player {} is already authenticated by policy; no login prompt required.", name)
         }

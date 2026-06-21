@@ -41,6 +41,11 @@ object ClientAuthHandler {
         return true
     }
 
+    /** 收到服务端认证提示：启动自动登录或普通登录流程。 */
+    fun onServerAuthPrompt(packet: AuthPackets.StartAuthPacket) {
+        tryStartAuth()
+    }
+
     /** 收到服务端挑战：尝试自动登录，否则弹登录界面。 */
     fun onChallenge(packet: AuthPackets.ChallengePacket) {
         if (packet.autoLogin) {

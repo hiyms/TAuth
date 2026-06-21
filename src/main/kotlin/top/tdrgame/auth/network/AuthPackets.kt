@@ -30,7 +30,7 @@ object AuthPackets {
     const val CODE_POLICY_DENIED = "POLICY_DENIED"
     const val CODE_ERROR = "ERROR"
 
-    private const val PROTOCOL_VERSION = "1"
+    private const val PROTOCOL_VERSION = "2"
     private val acceptsRemote = NetworkRegistry.acceptMissingOr(PROTOCOL_VERSION)
 
     val CHANNEL: SimpleChannel = NetworkRegistry.newSimpleChannel(
@@ -42,6 +42,9 @@ object AuthPackets {
 
     fun register() {
         var id = 0
+        // 服务端 → 客户端：提示客户端启动登录流程
+        CHANNEL.registerMessage(id++, StartAuthPacket::class.java,
+            StartAuthPacket::encode, StartAuthPacket::decode, StartAuthPacket::handle)
         // 客户端 → 服务端：请求登录挑战
         CHANNEL.registerMessage(id++, LoginRequestPacket::class.java,
             LoginRequestPacket::encode, LoginRequestPacket::decode, LoginRequestPacket::handle)
@@ -57,6 +60,21 @@ object AuthPackets {
         // 服务端 → 客户端：结果 / 注册策略
         CHANNEL.registerMessage(id++, LoginResultPacket::class.java,
             LoginResultPacket::encode, LoginResultPacket::decode, LoginResultPacket::handle)
+    }
+
+    /** 服务端 → 客户端：提示客户端发起登录请求。 */
+    class StartAuthPacket {
+        constructor()
+        constructor(buf: FriendlyByteBuf)
+        fun encode(buf: FriendlyByteBuf) {}
+        fun handle(ctx: Supplier<NetworkEvent.Context>) {
+            val context = ctx.get()
+            context.enqueueWork { runClientHandler("onServerAuthPrompt", this) }
+            context.packetHandled = true
+        }
+        companion object {
+            fun decode(buf: FriendlyByteBuf) = StartAuthPacket(buf)
+        }
     }
 
     /** 客户端 → 服务端：发起登录请求。 */
@@ -217,6 +235,13 @@ object AuthPackets {
     /** 向指定玩家发包的便捷方法。 */
     fun sendToPlayer(player: ServerPlayer, packet: Any) {
         CHANNEL.send(PacketDistributor.PLAYER.with { player }, packet)
+    }
+
+    /** 仅当客户端安装了 TAuth 且完成通道握手时发包。 */
+    fun sendToPlayerIfPresent(player: ServerPlayer, packet: Any) {
+        if (CHANNEL.isRemotePresent(player.connection.connection)) {
+            sendToPlayer(player, packet)
+        }
     }
 
     /** 客户端向服务端发包的便捷方法。 */
