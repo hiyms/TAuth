@@ -29,6 +29,7 @@ object ClientAuthHandler {
     private var registerMessage: String = ""
     private var suppressCloseCancel: Boolean = false
     private var authFlowEnding: Boolean = false
+    private var legacyAutoLoginMigrated: Boolean = false
 
     /**
      * 由客户端玩家加入服务器事件触发：向服务端发起登录请求。
@@ -37,9 +38,10 @@ object ClientAuthHandler {
         val mc = Minecraft.getInstance()
         val name = mc.user?.name ?: return false
         if (!isAuthChannelAvailable()) return false
+        applyLegacyAutoLoginMigrationOnce()
         val autoLoginEnabled = AutoLoginManager.isAutoLoginEnabled()
         val machineId = if (autoLoginEnabled) AutoLoginManager.machineId().toString() else null
-        val cache = AutoLoginManager.load()
+        val cache = if (autoLoginEnabled) AutoLoginManager.load() else null
         val server = currentServerId()
         val mode = if (autoLoginEnabled && cache != null && cache.lastServer == server && cache.derivedKey.isNotEmpty()) "auto" else "login"
         loginMessage = ""
@@ -92,8 +94,6 @@ object ClientAuthHandler {
     }
 
     fun isAutoLoginEnabled(): Boolean = AutoLoginManager.isAutoLoginEnabled()
-
-    fun toggleAutoLoginEnabled(): Boolean = AutoLoginManager.toggleAutoLoginEnabled()
 
     /** 注册界面提交：本地哈希后发送注册包。 */
     fun submitRegister(password: String, confirm: String) {
@@ -163,6 +163,12 @@ object ClientAuthHandler {
     private fun sendLoginRequest(mode: String, name: String) {
         val machineId = if (AutoLoginManager.isAutoLoginEnabled()) AutoLoginManager.machineId().toString() else null
         AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
+    }
+
+    private fun applyLegacyAutoLoginMigrationOnce() {
+        if (legacyAutoLoginMigrated) return
+        legacyAutoLoginMigrated = true
+        AutoLoginManager.applyLegacyConfigMigration()
     }
 
     private data class RegisterPolicy(val saltBytes: Int, val iterations: Int, val keyBits: Int)

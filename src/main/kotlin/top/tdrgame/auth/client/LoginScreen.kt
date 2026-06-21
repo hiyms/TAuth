@@ -27,9 +27,11 @@ object LoginScreen {
 
     fun create(message: String = ""): ModularUI {
         currentPassword = ""
-        val group = WidgetGroup(0, 0, 176, 118).setClientSideWidget()
+        val showAutoLoginWarning = !ClientAuthHandler.isAutoLoginEnabled()
+        val height = if (showAutoLoginWarning) 132 else 118
+        val group = WidgetGroup(0, 0, 176, height).setClientSideWidget()
 
-        group.addWidget(ImageWidget(0, 0, 176, 118, ResourceBorderTexture.BORDERED_BACKGROUND)
+        group.addWidget(ImageWidget(0, 0, 176, height, ResourceBorderTexture.BORDERED_BACKGROUND)
             .setClientSideWidget())
         group.addWidget(LabelWidget(12, 10, "§6§lTAuth 登录"))
         if (message.isNotEmpty()) {
@@ -49,14 +51,11 @@ object LoginScreen {
             .setClientSideWidget()
         group.addWidget(loginBtn)
 
-        val autoLoginBtn = ButtonWidget(12, 96, 78, 14,
-            TextTexture { "自动登录: ${if (ClientAuthHandler.isAutoLoginEnabled()) "开" else "关"}" }
-                .setColor(0xFFB8B8B8.toInt()),
-            { _ -> ClientAuthHandler.toggleAutoLoginEnabled() })
-            .setClientSideWidget()
-        group.addWidget(autoLoginBtn)
+        if (showAutoLoginWarning) {
+            group.addWidget(LabelWidget(12, 96, "§e自动登录已在配置中禁用"))
+        }
 
-        val forgotBtn = ButtonWidget(100, 96, 64, 14,
+        val forgotBtn = ButtonWidget(100, if (showAutoLoginWarning) 110 else 96, 64, 14,
             TextTexture("§n忘记密码", 0xFFB8B8B8.toInt()),
             { _ -> ClientAuthHandler.forgotPassword() })
             .setClientSideWidget()

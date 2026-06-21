@@ -8,7 +8,8 @@ import org.apache.logging.log4j.LogManager
 /**
  * 模组配置入口，使用 Forge ModConfig TOML 格式。
  *
- * 配置文件路径：config/tauth-server.toml
+ * 服务端配置文件路径：config/tauth-server.toml
+ * 客户端配置文件路径：config/tauth-client.toml
  * [auth.enabled] 为 false 时模组完全跳过所有逻辑，性能零开销。
  */
 object AuthConfig {
@@ -16,6 +17,7 @@ object AuthConfig {
     private val logger = LogManager.getLogger("tauth/AuthConfig")
 
     val spec: ForgeConfigSpec
+    val clientSpec: ForgeConfigSpec
 
     /** 是否启用认证。默认 false，需手动开启。 */
     val enabled: ForgeConfigSpec.BooleanValue
@@ -35,23 +37,33 @@ object AuthConfig {
     /** PBKDF2 输出密钥位数。默认 256。 */
     val keyLengthBits: ForgeConfigSpec.IntValue
 
+    /** 客户端是否启用自动登录缓存。 */
+    val autoLoginEnabled: ForgeConfigSpec.BooleanValue
+
     init {
-        val builder = ForgeConfigSpec.Builder()
-        builder.push("auth")
-        enabled = builder.comment("Enable authentication").define("enabled", false)
-        loginTimeoutSeconds = builder.comment("Login timeout in seconds")
+        val serverBuilder = ForgeConfigSpec.Builder()
+        serverBuilder.push("auth")
+        enabled = serverBuilder.comment("Enable authentication").define("enabled", false)
+        loginTimeoutSeconds = serverBuilder.comment("Login timeout in seconds")
             .defineInRange("loginTimeoutSeconds", 90, 10, 3600)
-        maxFailAttempts = builder.comment("Max wrong password attempts before kick")
+        maxFailAttempts = serverBuilder.comment("Max wrong password attempts before kick")
             .defineInRange("maxFailAttempts", 5, 1, 100)
         // 密码加盐配置：默认与 offlineauth / TrueUUID 兼容的参数
-        saltBytes = builder.comment("Salt length in bytes for password hashing")
+        saltBytes = serverBuilder.comment("Salt length in bytes for password hashing")
             .defineInRange("saltBytes", 16, 8, 64)
-        iterations = builder.comment("PBKDF2 iteration count")
+        iterations = serverBuilder.comment("PBKDF2 iteration count")
             .defineInRange("iterations", 10000, 1000, 500000)
-        keyLengthBits = builder.comment("PBKDF2 derived key length in bits")
+        keyLengthBits = serverBuilder.comment("PBKDF2 derived key length in bits")
             .defineInRange("keyLengthBits", 256, 128, 512)
-        builder.pop()
-        spec = builder.build()
+        serverBuilder.pop()
+        spec = serverBuilder.build()
+
+        val clientBuilder = ForgeConfigSpec.Builder()
+        clientBuilder.push("client")
+        autoLoginEnabled = clientBuilder.comment("Enable automatic login cache on this client")
+            .define("autoLoginEnabled", true)
+        clientBuilder.pop()
+        clientSpec = clientBuilder.build()
     }
 
     /**
@@ -60,7 +72,9 @@ object AuthConfig {
      */
     fun register() {
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, spec, "tauth-server.toml")
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, clientSpec, "tauth-client.toml")
         logger.info("Registered TAuth SERVER config as tauth-server.toml. Edit the world/serverconfig copy for dedicated server worlds.")
+        logger.info("Registered TAuth CLIENT config as tauth-client.toml.")
     }
 
     /** 供 Java 代码调用的便捷开关：auth.enabled 是否开启。 */
