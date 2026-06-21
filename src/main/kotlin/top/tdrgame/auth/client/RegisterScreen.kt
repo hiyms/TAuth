@@ -13,6 +13,7 @@ import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup
 import net.minecraft.client.Minecraft
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.api.distmarker.OnlyIn
+import top.tdrgame.auth.i18n.I18nKeys
 
 /**
  * LDLib 注册界面。
@@ -33,19 +34,19 @@ object RegisterScreen {
 
         group.addWidget(ImageWidget(0, 0, 196, 146, ResourceBorderTexture.BORDERED_BACKGROUND)
             .setClientSideWidget())
-        group.addWidget(LabelWidget(12, 10, "§6§lTAuth 注册"))
+        group.addWidget(LabelWidget(12, 10, "§6§l${ClientI18n.text(I18nKeys.GUI_REGISTER_TITLE)}"))
         if (message.isNotEmpty()) {
             group.addWidget(LabelWidget(12, 28, "§c${message.take(28)}"))
         }
 
-        group.addWidget(LabelWidget(12, 44, "§f密码"))
+        group.addWidget(LabelWidget(12, 44, "§f${ClientI18n.text(I18nKeys.GUI_PASSWORD)}"))
         group.addWidget(ImageWidget(76, 41, 110, 18, ResourceBorderTexture.BAR)
             .setClientSideWidget())
         val passwordField = TextFieldWidget(80, 42, 102, 16, { currentPassword }, { currentPassword = it })
             .setClientSideWidget()
         group.addWidget(passwordField)
 
-        group.addWidget(LabelWidget(12, 68, "§f再次输入密码"))
+        group.addWidget(LabelWidget(12, 68, "§f${ClientI18n.text(I18nKeys.GUI_CONFIRM_PASSWORD)}"))
         group.addWidget(ImageWidget(76, 65, 110, 18, ResourceBorderTexture.BAR)
             .setClientSideWidget())
         val confirmField = TextFieldWidget(80, 66, 102, 16, { currentConfirm }, { currentConfirm = it })
@@ -53,13 +54,13 @@ object RegisterScreen {
         group.addWidget(confirmField)
 
         val registerBtn = ButtonWidget(64, 102, 68, 18,
-            GuiTextureGroup(ResourceBorderTexture.BUTTON_COMMON, TextTexture("注册")),
+            GuiTextureGroup(ResourceBorderTexture.BUTTON_COMMON, TextTexture(ClientI18n.text(I18nKeys.GUI_REGISTER_BUTTON))),
             { _ -> ClientAuthHandler.submitRegister(currentPassword, currentConfirm) })
             .setClientSideWidget()
         group.addWidget(registerBtn)
 
         if (!ClientAuthHandler.isAutoLoginEnabled()) {
-            group.addWidget(LabelWidget(12, 124, "§e自动登录已在配置中禁用"))
+            group.addWidget(LabelWidget(12, 124, "§e${ClientI18n.text(I18nKeys.GUI_AUTO_LOGIN_DISABLED)}"))
         }
 
         val player = Minecraft.getInstance().player

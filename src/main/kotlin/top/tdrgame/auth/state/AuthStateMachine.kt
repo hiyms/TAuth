@@ -3,6 +3,8 @@ package top.tdrgame.auth.state
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import top.tdrgame.auth.config.AuthConfig
+import top.tdrgame.auth.i18n.I18nKeys
+import top.tdrgame.auth.i18n.ServerI18n
 
 /**
  * 每个在线玩家的认证状态管理器。
@@ -45,7 +47,7 @@ class AuthStateMachine(
         val elapsed = (System.currentTimeMillis() - pending.joinTime) / 1000
 
         if (elapsed > AuthConfig.loginTimeoutSeconds.get()) {
-            state = AuthState.TimedOut("§c登录超时，你已被踢出！")
+            state = AuthState.TimedOut(I18nKeys.LOGIN_TIMEOUT)
             return
         }
 
@@ -53,11 +55,9 @@ class AuthStateMachine(
         if (remindTick >= 100) {
             remindTick = 0
             if (!isRegistered) {
-                player.sendSystemMessage(Component.literal(
-                    "§c首次进服，请使用 /register 密码 确认密码 注册账户！"))
+                player.sendSystemMessage(ServerI18n.text(I18nKeys.FIRST_JOIN_REGISTER).withStyle(net.minecraft.ChatFormatting.RED))
             } else {
-                player.sendSystemMessage(Component.literal(
-                    "§e请使用 /login 密码 登录账户！"))
+                player.sendSystemMessage(ServerI18n.text(I18nKeys.PROMPT_LOGIN).withStyle(net.minecraft.ChatFormatting.YELLOW))
             }
         }
     }
@@ -75,7 +75,7 @@ class AuthStateMachine(
     fun onLoginFail(): Boolean {
         failCount++
         if (failCount >= AuthConfig.maxFailAttempts.get()) {
-            state = AuthState.TimedOut("§c密码错误次数过多，你已被踢出！")
+            state = AuthState.TimedOut(I18nKeys.TOO_MANY_FAILURES)
             return true
         }
         state = AuthState.Pending(System.currentTimeMillis())
@@ -86,7 +86,7 @@ class AuthStateMachine(
 
     fun shouldKick(): Boolean = state is AuthState.TimedOut
 
-    fun kickReason(): String = (state as? AuthState.TimedOut)?.reason ?: "Unknown"
+    fun kickReason(): String = (state as? AuthState.TimedOut)?.reason ?: I18nKeys.UNKNOWN_KICK
 
     companion object {
         /** 纯策略：只有已注册、历史正版验证、本次正版登录三者同时满足才可自动放行。 */

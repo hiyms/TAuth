@@ -14,6 +14,7 @@ import net.minecraftforge.event.level.BlockEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import top.tdrgame.auth.TAuth
 import top.tdrgame.auth.config.AuthConfig
+import top.tdrgame.auth.i18n.ServerI18n
 import top.tdrgame.auth.network.AuthPackets
 
 /**
@@ -111,7 +112,7 @@ object EventHandler {
             restoreInventory(player, notify = false)
             CommandHandler.clearPendingChallenge(name)
             AuthManager.restoreOriginalState(player)
-            player.connection.disconnect(Component.literal(reason))
+            player.connection.disconnect(ServerI18n.text(reason))
         }
     }
 

@@ -5,6 +5,8 @@ import com.lowdragmc.lowdraglib.gui.modular.ModularUIGuiContainer
 import net.minecraft.client.Minecraft
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.api.distmarker.OnlyIn
+import net.minecraft.network.chat.Component
+import top.tdrgame.auth.i18n.I18nKeys
 import top.tdrgame.auth.network.AuthPackets
 
 /**
@@ -75,7 +77,7 @@ object ClientAuthHandler {
     fun submitPassword(password: String) {
         val challenge = pendingChallenge ?: return
         if (password.isEmpty()) {
-            loginMessage = "请输入密码。"
+            loginMessage = ClientI18n.text(I18nKeys.GUI_PASSWORD_REQUIRED)
             showLoginScreen()
             return
         }
@@ -98,12 +100,12 @@ object ClientAuthHandler {
     /** 注册界面提交：本地哈希后发送注册包。 */
     fun submitRegister(password: String, confirm: String) {
         if (password.isEmpty()) {
-            registerMessage = "请输入密码。"
+            registerMessage = ClientI18n.text(I18nKeys.GUI_PASSWORD_REQUIRED)
             showRegisterScreen()
             return
         }
         if (password != confirm) {
-            registerMessage = "两次输入的密码不一致。"
+            registerMessage = ClientI18n.text(I18nKeys.GUI_CONFIRM_MISMATCH)
             showRegisterScreen()
             return
         }
@@ -129,10 +131,9 @@ object ClientAuthHandler {
             if (key != null && key.isNotEmpty() && AutoLoginManager.isAutoLoginEnabled()) {
                 AutoLoginManager.save(key, currentServerId())
             }
-            if (packet.message.isNotEmpty()) {
-                mc.player?.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal("§a${packet.message}"), false)
-            }
+            mc.player?.displayClientMessage(
+                Component.translatable(messageKey(packet.code))
+                    .withStyle(net.minecraft.ChatFormatting.GREEN), false)
             return
         }
 
@@ -149,7 +150,7 @@ object ClientAuthHandler {
             }
             AuthPackets.CODE_BAD_PASSWORD -> {
                 pendingChallenge = null
-                loginMessage = "密码错误。"
+                loginMessage = ClientI18n.text(I18nKeys.BAD_PASSWORD)
                 sendLoginRequest("login", mc.user?.name ?: return)
             }
             else -> {
@@ -169,6 +170,16 @@ object ClientAuthHandler {
         if (legacyAutoLoginMigrated) return
         legacyAutoLoginMigrated = true
         AutoLoginManager.applyLegacyConfigMigration()
+    }
+
+    private fun messageKey(code: String): String = when (code) {
+        AuthPackets.CODE_REGISTER_OK -> I18nKeys.REGISTER_SUCCESS
+        AuthPackets.CODE_BAD_PASSWORD -> I18nKeys.BAD_PASSWORD
+        AuthPackets.CODE_NOT_REGISTERED -> I18nKeys.NOT_REGISTERED_GUI
+        AuthPackets.CODE_ALREADY_REGISTERED -> I18nKeys.ALREADY_REGISTERED_DIRECT_LOGIN
+        AuthPackets.CODE_AUTO_DENIED -> I18nKeys.AUTO_LOGIN_DENIED
+        AuthPackets.CODE_LOGIN_OK -> I18nKeys.LOGIN_SUCCESS
+        else -> I18nKeys.NO_PENDING_CHALLENGE
     }
 
     private data class RegisterPolicy(val saltBytes: Int, val iterations: Int, val keyBits: Int)

@@ -9,6 +9,9 @@ import net.minecraftforge.network.NetworkEvent
 import net.minecraftforge.network.NetworkRegistry
 import net.minecraftforge.network.PacketDistributor
 import net.minecraftforge.network.simple.SimpleChannel
+import net.minecraft.network.chat.Component
+import top.tdrgame.auth.i18n.I18nKeys
+import top.tdrgame.auth.i18n.ServerI18n
 import top.tdrgame.auth.server.CommandHandler
 import java.security.MessageDigest
 import java.util.function.Supplier
@@ -170,7 +173,7 @@ object AuthPackets {
             val context = ctx.get()
             context.enqueueWork {
                 val player = context.sender ?: return@enqueueWork
-                player.connection.disconnect(net.minecraft.network.chat.Component.literal("请联系管理重置密码"))
+                player.connection.disconnect(ServerI18n.text(I18nKeys.FORGOT_PASSWORD_DISCONNECT))
             }
             context.packetHandled = true
         }
@@ -188,7 +191,7 @@ object AuthPackets {
             val context = ctx.get()
             context.enqueueWork {
                 val player = context.sender ?: return@enqueueWork
-                player.connection.disconnect(net.minecraft.network.chat.Component.literal("玩家已取消验证会话"))
+                player.connection.disconnect(ServerI18n.text(I18nKeys.CANCEL_AUTH_DISCONNECT))
             }
             context.packetHandled = true
         }

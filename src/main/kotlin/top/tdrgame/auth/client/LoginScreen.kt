@@ -13,6 +13,7 @@ import com.lowdragmc.lowdraglib.gui.widget.WidgetGroup
 import net.minecraft.client.Minecraft
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.api.distmarker.OnlyIn
+import top.tdrgame.auth.i18n.I18nKeys
 
 /**
  * LDLib 登录界面。
@@ -33,12 +34,12 @@ object LoginScreen {
 
         group.addWidget(ImageWidget(0, 0, 176, height, ResourceBorderTexture.BORDERED_BACKGROUND)
             .setClientSideWidget())
-        group.addWidget(LabelWidget(12, 10, "§6§lTAuth 登录"))
+        group.addWidget(LabelWidget(12, 10, "§6§l${ClientI18n.text(I18nKeys.GUI_LOGIN_TITLE)}"))
         if (message.isNotEmpty()) {
             group.addWidget(LabelWidget(12, 28, "§c${message.take(24)}"))
         }
 
-        group.addWidget(LabelWidget(12, 44, "§f密码"))
+        group.addWidget(LabelWidget(12, 44, "§f${ClientI18n.text(I18nKeys.GUI_PASSWORD)}"))
         group.addWidget(ImageWidget(52, 41, 114, 18, ResourceBorderTexture.BAR)
             .setClientSideWidget())
         val passwordField = TextFieldWidget(56, 42, 106, 16, { currentPassword }, { currentPassword = it })
@@ -46,17 +47,17 @@ object LoginScreen {
         group.addWidget(passwordField)
 
         val loginBtn = ButtonWidget(54, 74, 68, 18,
-            GuiTextureGroup(ResourceBorderTexture.BUTTON_COMMON, TextTexture("登录")),
+            GuiTextureGroup(ResourceBorderTexture.BUTTON_COMMON, TextTexture(ClientI18n.text(I18nKeys.GUI_LOGIN_BUTTON))),
             { _ -> ClientAuthHandler.submitPassword(currentPassword) })
             .setClientSideWidget()
         group.addWidget(loginBtn)
 
         if (showAutoLoginWarning) {
-            group.addWidget(LabelWidget(12, 96, "§e自动登录已在配置中禁用"))
+            group.addWidget(LabelWidget(12, 96, "§e${ClientI18n.text(I18nKeys.GUI_AUTO_LOGIN_DISABLED)}"))
         }
 
         val forgotBtn = ButtonWidget(100, if (showAutoLoginWarning) 110 else 96, 64, 14,
-            TextTexture("§n忘记密码", 0xFFB8B8B8.toInt()),
+            TextTexture("§n${ClientI18n.text(I18nKeys.GUI_FORGOT_PASSWORD)}", 0xFFB8B8B8.toInt()),
             { _ -> ClientAuthHandler.forgotPassword() })
             .setClientSideWidget()
         group.addWidget(forgotBtn)

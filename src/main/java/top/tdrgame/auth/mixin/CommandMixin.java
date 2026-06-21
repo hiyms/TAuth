@@ -10,6 +10,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import top.tdrgame.auth.config.AuthConfig;
+import top.tdrgame.auth.i18n.I18nKeys;
+import top.tdrgame.auth.i18n.ServerI18n;
 import top.tdrgame.auth.server.AuthManager;
 
 import java.util.Locale;
@@ -53,8 +55,8 @@ public class CommandMixin {
                 .split(" ")[0];
 
             if (!ALLOWED_COMMANDS.contains(commandName.toLowerCase(Locale.ROOT))) {
-                player.sendSystemMessage(Component.literal(
-                    "§c未登录禁止使用此命令！请先 /login 登录或 /register 注册。"));
+                player.sendSystemMessage(ServerI18n.INSTANCE.text(I18nKeys.COMMAND_BLOCKED)
+                    .withStyle(net.minecraft.ChatFormatting.RED));
                 return 0;
             }
         }

@@ -8,6 +8,8 @@ import net.minecraftforge.event.RegisterCommandsEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import top.tdrgame.auth.TAuth
 import top.tdrgame.auth.config.AuthConfig
+import top.tdrgame.auth.i18n.I18nKeys
+import top.tdrgame.auth.i18n.ServerI18n
 import top.tdrgame.auth.network.AuthPackets
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -29,7 +31,7 @@ object CommandHandler {
                         .executes { ctx ->
                             val player = ctx.source.playerOrException
                             if (!AuthConfig.enabled.get()) {
-                                player.sendSystemMessage(Component.literal("§c认证功能未启用。"))
+                                player.sendSystemMessage(ServerI18n.text(I18nKeys.AUTH_DISABLED).withStyle(net.minecraft.ChatFormatting.RED))
                                 return@executes 1
                             }
                             handleRegister(player,
@@ -96,7 +98,7 @@ object CommandHandler {
                             AuthPackets.sendToPlayerIfPresent(target, AuthPackets.StartAuthPacket())
                         }
                         ctx.source.sendSuccess(
-                            { Component.literal("§a已重置 $targetName 的密码。该玩家需要重新注册。") },
+                            { ServerI18n.text(I18nKeys.RESET_SUCCESS, targetName).withStyle(net.minecraft.ChatFormatting.GREEN) },
                             true
                         )
                         return@executes 1
@@ -109,13 +111,13 @@ object CommandHandler {
         val machine = AuthManager.getStateMachine(player)
 
         if (password != confirm) {
-            player.sendSystemMessage(Component.literal("§c两次输入的密码不一致！"))
+            player.sendSystemMessage(ServerI18n.text(I18nKeys.REGISTER_PASSWORD_MISMATCH).withStyle(net.minecraft.ChatFormatting.RED))
             machine?.onLoginFail()
             return
         }
 
         if (storage.isRegistered(name)) {
-            player.sendSystemMessage(Component.literal("§c你已注册。请使用 /login 密码 登录！"))
+            player.sendSystemMessage(ServerI18n.text(I18nKeys.ALREADY_REGISTERED_LOGIN).withStyle(net.minecraft.ChatFormatting.RED))
             return
         }
 
@@ -123,7 +125,7 @@ object CommandHandler {
         val loginType = if (isPremium) "online" else "offline"
         storage.register(name, password, verified = isPremium, loginType = loginType)
         finishLogin(player)
-        player.sendSystemMessage(Component.literal("§a注册成功！"))
+        player.sendSystemMessage(ServerI18n.text(I18nKeys.REGISTER_SUCCESS).withStyle(net.minecraft.ChatFormatting.GREEN))
     }
 
     private fun handleLogin(player: ServerPlayer, password: String) {
@@ -132,13 +134,13 @@ object CommandHandler {
         val machine = AuthManager.getStateMachine(player)
 
         if (!storage.isRegistered(name)) {
-            player.sendSystemMessage(Component.literal("§c你尚未注册。请使用 /register 密码 确认密码 注册！"))
+            player.sendSystemMessage(ServerI18n.text(I18nKeys.NOT_REGISTERED_REGISTER).withStyle(net.minecraft.ChatFormatting.RED))
             machine?.onLoginFail()
             return
         }
 
         if (!storage.checkPassword(name, password)) {
-            player.sendSystemMessage(Component.literal("§c密码错误！"))
+            player.sendSystemMessage(ServerI18n.text(I18nKeys.BAD_PASSWORD).withStyle(net.minecraft.ChatFormatting.RED))
             machine?.onLoginFail()
             return
         }
@@ -148,7 +150,7 @@ object CommandHandler {
         storage.updateVerification(name, isPremium = isPremium, loginType = loginType)
 
         finishLogin(player)
-        player.sendSystemMessage(Component.literal("§a登录成功！"))
+        player.sendSystemMessage(ServerI18n.text(I18nKeys.LOGIN_SUCCESS).withStyle(net.minecraft.ChatFormatting.GREEN))
     }
 
     private fun finishLogin(player: ServerPlayer) {
@@ -182,13 +184,13 @@ object CommandHandler {
         if (!AuthConfig.enabled.get()) {
             TAuth.LOGGER.info("Ignoring client auth request from {} because authentication is disabled.", player.name.string)
             AuthPackets.sendToPlayer(player,
-                result(true, AuthPackets.CODE_LOGIN_OK, "Authentication is disabled on this server."))
+                result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.AUTH_DISABLED)))
             return
         }
         val name = player.name.string
         val storage = TAuthHolder.storage
         if (AuthManager.isAuthenticated(player)) {
-            AuthPackets.sendToPlayer(player, result(true, AuthPackets.CODE_LOGIN_OK, "已认证。"))
+            AuthPackets.sendToPlayer(player, result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.ALREADY_AUTHENTICATED)))
             return
         }
 
@@ -196,7 +198,7 @@ object CommandHandler {
         if (params == null) {
             AuthPackets.sendToPlayer(player,
                 result(false, AuthPackets.CODE_NOT_REGISTERED,
-                    "你尚未注册。请使用 /register 注册！", policy = storage.hashPolicy()))
+                    ServerI18n.fallback(I18nKeys.NOT_REGISTERED_GUI), policy = storage.hashPolicy()))
             return
         }
 
@@ -204,7 +206,7 @@ object CommandHandler {
         val machineId = packet.machineId
         if (autoLogin && !storage.isAutoLoginAllowed(name, machineId, AuthManager.getPlayerIp(player))) {
             AuthPackets.sendToPlayer(player,
-                result(false, AuthPackets.CODE_AUTO_DENIED, "自动登录条件不匹配，请手动登录。"))
+                result(false, AuthPackets.CODE_AUTO_DENIED, ServerI18n.fallback(I18nKeys.AUTO_LOGIN_DENIED)))
             return
         }
 
@@ -222,20 +224,20 @@ object CommandHandler {
         if (!AuthConfig.enabled.get()) {
             pendingChallenges.remove(player.name.string)
             AuthPackets.sendToPlayer(player,
-                result(true, AuthPackets.CODE_LOGIN_OK, "Authentication is disabled on this server."))
+                result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.AUTH_DISABLED)))
             return
         }
         val name = player.name.string
         val session = pendingChallenges.remove(name)
         if (session == null) {
             AuthPackets.sendToPlayer(player,
-                result(false, AuthPackets.CODE_ERROR, "无待处理挑战，请重试。"))
+                result(false, AuthPackets.CODE_ERROR, ServerI18n.fallback(I18nKeys.NO_PENDING_CHALLENGE)))
             return
         }
         if (!MessageDigest.isEqual(session.expected, packet.response)) {
             AuthManager.getStateMachine(player)?.onLoginFail()
             AuthPackets.sendToPlayer(player,
-                result(false, AuthPackets.CODE_BAD_PASSWORD, "密码错误！"))
+                result(false, AuthPackets.CODE_BAD_PASSWORD, ServerI18n.fallback(I18nKeys.BAD_PASSWORD)))
             return
         }
         val isPremium = AuthManager.isPremiumSession(player)
@@ -246,7 +248,7 @@ object CommandHandler {
         }
         finishLogin(player)
         AuthPackets.sendToPlayer(player,
-            result(true, AuthPackets.CODE_LOGIN_OK, "登录成功！",
+            result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.LOGIN_SUCCESS),
                 rememberKey = if (!session.machineId.isNullOrBlank()) session.derivedKey else null))
     }
 
@@ -254,7 +256,7 @@ object CommandHandler {
     fun handleRegisterSubmit(player: ServerPlayer, packet: AuthPackets.RegisterSubmitPacket) {
         if (!AuthConfig.enabled.get()) {
             AuthPackets.sendToPlayer(player,
-                result(true, AuthPackets.CODE_LOGIN_OK, "Authentication is disabled on this server."))
+                result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.AUTH_DISABLED)))
             return
         }
         val name = player.name.string
@@ -263,12 +265,12 @@ object CommandHandler {
         val parsed = PasswordHasher.parse(packet.passwordHash)
         if (parsed == null) {
             AuthPackets.sendToPlayer(player,
-                result(false, AuthPackets.CODE_ERROR, "密码哈希格式非法，请重试。"))
+                result(false, AuthPackets.CODE_ERROR, ServerI18n.fallback(I18nKeys.INVALID_PASSWORD_HASH)))
             return
         }
         if (!TAuthHolder.storage.registerWithHash(name, packet.passwordHash, verified = isPremium, loginType = loginType)) {
             AuthPackets.sendToPlayer(player,
-                result(false, AuthPackets.CODE_ALREADY_REGISTERED, "你已注册，请直接登录。"))
+                result(false, AuthPackets.CODE_ALREADY_REGISTERED, ServerI18n.fallback(I18nKeys.ALREADY_REGISTERED_DIRECT_LOGIN)))
             return
         }
         if (!packet.machineId.isNullOrBlank()) {
@@ -276,7 +278,7 @@ object CommandHandler {
         }
         finishLogin(player)
         AuthPackets.sendToPlayer(player,
-            result(true, AuthPackets.CODE_REGISTER_OK, "注册成功！",
+            result(true, AuthPackets.CODE_REGISTER_OK, ServerI18n.fallback(I18nKeys.REGISTER_SUCCESS),
                 rememberKey = if (!packet.machineId.isNullOrBlank()) parsed.hash else null))
     }
 
