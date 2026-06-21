@@ -27,26 +27,31 @@ jobs:
       - name: Extract tag version
         run: |
           TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
+          MOD_VERSION="${TAG#v}"
 
-          if [ "$TAG" = "$VERSION" ] || [ -z "$VERSION" ]; then
+          if [ "$TAG" = "$MOD_VERSION" ] || [ -z "$MOD_VERSION" ]; then
             echo "Release tags must use the v<version> format." >&2
             exit 1
           fi
 
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "ASSET_NAME=tauth-$VERSION.jar" >> "$GITHUB_ENV"
+          echo "MOD_VERSION=$MOD_VERSION" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=tauth-$MOD_VERSION.jar" >> "$GITHUB_ENV"
 
       - name: Build plugin
-        run: ./gradlew -PmodVersion="${VERSION}" build
+        run: ./gradlew -PmodVersion="${MOD_VERSION}" build
 
       - name: Prepare release asset
         run: |
-          SOURCE_JAR="build/libs/tauth-${VERSION}.jar"
+          SOURCE_JAR="build/libs/tauth-${MOD_VERSION}.jar"
 
           if [ ! -f "$SOURCE_JAR" ]; then
             echo "Expected build artifact not found: $SOURCE_JAR" >&2
+            exit 1
+          fi
+
+          if ! unzip -p "$SOURCE_JAR" META-INF/mods.toml | grep -F "version=\"$MOD_VERSION\""; then
+            echo "Built mod metadata does not contain version=\"$MOD_VERSION\"." >&2
             exit 1
           fi
 
