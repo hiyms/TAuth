@@ -30,7 +30,7 @@ object AuthPackets {
     const val CODE_POLICY_DENIED = "POLICY_DENIED"
     const val CODE_ERROR = "ERROR"
 
-    private const val PROTOCOL_VERSION = "3"
+    private const val PROTOCOL_VERSION = "4"
     private val acceptsRemote = NetworkRegistry.acceptMissingOr(PROTOCOL_VERSION)
 
     val CHANNEL: SimpleChannel = NetworkRegistry.newSimpleChannel(
@@ -57,6 +57,9 @@ object AuthPackets {
         // 客户端 → 服务端：忘记密码，提示联系管理员并断开连接
         CHANNEL.registerMessage(id++, ForgotPasswordPacket::class.java,
             ForgotPasswordPacket::encode, ForgotPasswordPacket::decode, ForgotPasswordPacket::handle)
+        // 客户端 → 服务端：玩家关闭认证 GUI，取消验证会话
+        CHANNEL.registerMessage(id++, CancelAuthPacket::class.java,
+            CancelAuthPacket::encode, CancelAuthPacket::decode, CancelAuthPacket::handle)
         // 客户端 → 服务端：注册提交（已本地哈希）
         CHANNEL.registerMessage(id++, RegisterSubmitPacket::class.java,
             RegisterSubmitPacket::encode, RegisterSubmitPacket::decode, RegisterSubmitPacket::handle)
@@ -173,6 +176,24 @@ object AuthPackets {
         }
         companion object {
             fun decode(buf: FriendlyByteBuf) = ForgotPasswordPacket(buf)
+        }
+    }
+
+    /** 客户端 → 服务端：玩家关闭认证 GUI，服务端断开连接。 */
+    class CancelAuthPacket {
+        constructor()
+        constructor(buf: FriendlyByteBuf)
+        fun encode(buf: FriendlyByteBuf) {}
+        fun handle(ctx: Supplier<NetworkEvent.Context>) {
+            val context = ctx.get()
+            context.enqueueWork {
+                val player = context.sender ?: return@enqueueWork
+                player.connection.disconnect(net.minecraft.network.chat.Component.literal("玩家已取消验证会话"))
+            }
+            context.packetHandled = true
+        }
+        companion object {
+            fun decode(buf: FriendlyByteBuf) = CancelAuthPacket(buf)
         }
     }
 

@@ -1,5 +1,6 @@
 package top.tdrgame.auth.client
 
+import com.lowdragmc.lowdraglib.gui.modular.ModularUI
 import com.lowdragmc.lowdraglib.gui.modular.ModularUIGuiContainer
 import net.minecraft.client.Minecraft
 import net.minecraftforge.api.distmarker.Dist
@@ -26,6 +27,8 @@ object ClientAuthHandler {
 
     private var loginMessage: String = ""
     private var registerMessage: String = ""
+    private var suppressCloseCancel: Boolean = false
+    private var authFlowEnding: Boolean = false
 
     /**
      * 由客户端玩家加入服务器事件触发：向服务端发起登录请求。
@@ -40,6 +43,7 @@ object ClientAuthHandler {
         val mode = if (cache != null && cache.lastServer == server && cache.derivedKey.isNotEmpty()) "auto" else "login"
         loginMessage = ""
         registerMessage = ""
+        authFlowEnding = false
         AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
         return true
     }
@@ -81,6 +85,7 @@ object ClientAuthHandler {
     /** 登录界面点击忘记密码：请求服务端断开并显示管理员重置提示。 */
     fun forgotPassword() {
         if (isAuthChannelAvailable()) {
+            authFlowEnding = true
             AuthPackets.sendToServer(AuthPackets.ForgotPasswordPacket())
         }
     }
@@ -112,6 +117,7 @@ object ClientAuthHandler {
             pendingChallenge = null
             loginMessage = ""
             registerMessage = ""
+            authFlowEnding = true
             closeScreen()
             val key = packet.rememberKey
             if (key != null && key.isNotEmpty()) {
@@ -162,11 +168,7 @@ object ClientAuthHandler {
     private fun showLoginScreen() {
         val mc = Minecraft.getInstance()
         mc.execute {
-            val ui = LoginScreen.create(loginMessage)
-            ui.initWidgets()
-            val screen = ModularUIGuiContainer(ui, 0)
-            currentScreen = screen
-            mc.setScreen(screen)
+            openAuthScreen(LoginScreen.create(loginMessage))
         }
     }
 
@@ -174,11 +176,30 @@ object ClientAuthHandler {
     private fun showRegisterScreen() {
         val mc = Minecraft.getInstance()
         mc.execute {
-            val ui = RegisterScreen.create(registerMessage)
-            ui.initWidgets()
-            val screen = ModularUIGuiContainer(ui, 0)
+            openAuthScreen(RegisterScreen.create(registerMessage))
+        }
+    }
+
+    private fun openAuthScreen(ui: ModularUI) {
+        val mc = Minecraft.getInstance()
+        var screen: ModularUIGuiContainer? = null
+        ui.registerCloseListener {
+            if (currentScreen === screen) {
+                currentScreen = null
+            }
+            if (!suppressCloseCancel && !authFlowEnding && isAuthChannelAvailable()) {
+                authFlowEnding = true
+                AuthPackets.sendToServer(AuthPackets.CancelAuthPacket())
+            }
+        }
+        ui.initWidgets()
+        screen = ModularUIGuiContainer(ui, 0)
+        suppressCloseCancel = true
+        try {
             currentScreen = screen
             mc.setScreen(screen)
+        } finally {
+            suppressCloseCancel = false
         }
     }
 
@@ -186,10 +207,15 @@ object ClientAuthHandler {
     private fun closeScreen() {
         val mc = Minecraft.getInstance()
         mc.execute {
-            if (mc.screen === currentScreen) {
-                mc.setScreen(null)
+            suppressCloseCancel = true
+            try {
+                if (mc.screen === currentScreen) {
+                    mc.setScreen(null)
+                }
+                currentScreen = null
+            } finally {
+                suppressCloseCancel = false
             }
-            currentScreen = null
         }
     }
 
