@@ -15,7 +15,10 @@ object AuthManager {
 
     private data class RestrictionSnapshot(
         val gameMode: GameType,
-        val invulnerable: Boolean
+        val invulnerable: Boolean,
+        val x: Double,
+        val y: Double,
+        val z: Double
     )
 
     private val pendingPlayers = ConcurrentHashMap<String, AuthStateMachine>()
@@ -99,16 +102,28 @@ object AuthManager {
         player.setGameMode(snapshot.gameMode)
     }
 
+    fun enforcePendingRestriction(player: ServerPlayer) {
+        val name = player.name.string
+        if (!pendingPlayers.containsKey(name)) return
+        val snapshot = restrictionSnapshots[name] ?: return
+        player.setInvulnerable(true)
+        player.setGameMode(GameType.ADVENTURE)
+        player.fallDistance = 0.0f
+        player.connection.teleport(snapshot.x, snapshot.y, snapshot.z, player.yRot, player.xRot)
+    }
+
     private fun restrictPlayer(player: ServerPlayer) {
         val name = player.name.string
         restrictionSnapshots.computeIfAbsent(name) {
             RestrictionSnapshot(
                 gameMode = player.gameMode.gameModeForPlayer,
-                invulnerable = player.isInvulnerable
+                invulnerable = player.isInvulnerable,
+                x = player.x,
+                y = player.y,
+                z = player.z
             )
         }
-        player.setInvulnerable(true)
-        player.setGameMode(GameType.ADVENTURE)
+        enforcePendingRestriction(player)
     }
 
     fun unrestrictPlayer(player: ServerPlayer) {

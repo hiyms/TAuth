@@ -4,6 +4,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import net.minecraftforge.event.ServerChatEvent
 import net.minecraftforge.event.server.ServerStartingEvent
+import net.minecraftforge.event.server.ServerStoppingEvent
 import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.entity.item.ItemTossEvent
 import net.minecraftforge.event.entity.living.LivingDeathEvent
@@ -37,6 +38,12 @@ object EventHandler {
         }
         TAuth.LOGGER.info("Authentication is enabled; running migration check and enabling auth enforcement.")
         MigrationService.runIfNeeded(TAuthHolder.storage)
+    }
+
+    @SubscribeEvent
+    @JvmStatic
+    fun onServerStopping(event: ServerStoppingEvent) {
+        TAuthHolder.storage.close()
     }
 
     @SubscribeEvent
@@ -94,6 +101,9 @@ object EventHandler {
         if (event.phase != TickEvent.Phase.END) return
 
         AuthManager.tick()
+        event.server.playerList.players.forEach { player ->
+            AuthManager.enforcePendingRestriction(player)
+        }
         AuthManager.collectKicks().forEach { (name, reason) ->
             val player = event.server.playerList.getPlayerByName(name) ?: return@forEach
             restoreInventory(player, notify = false)
@@ -162,6 +172,16 @@ object EventHandler {
     }
 
     @SubscribeEvent @JvmStatic
+    fun onAttackEntity(event: AttackEntityEvent) {
+        if (!AuthConfig.enabled.get()) return
+        val player = event.entity as? ServerPlayer ?: return
+        if (!AuthManager.isAuthenticated(player)) {
+            event.isCanceled = true
+            player.sendSystemMessage(Component.literal("§c未登录禁止攻击！"))
+        }
+    }
+
+    @SubscribeEvent @JvmStatic
     fun onContainerOpen(event: PlayerContainerEvent.Open) {
         if (!AuthConfig.enabled.get()) return
         val player = event.entity as? ServerPlayer ?: return
@@ -173,6 +193,12 @@ object EventHandler {
     @SubscribeEvent @JvmStatic
     fun onHurt(event: LivingHurtEvent) {
         if (!AuthConfig.enabled.get()) return
+        val attacker = event.source.entity as? ServerPlayer
+        if (attacker != null && !AuthManager.isAuthenticated(attacker)) {
+            event.isCanceled = true
+            attacker.sendSystemMessage(Component.literal("§c未登录禁止攻击！"))
+            return
+        }
         val player = event.entity as? ServerPlayer ?: return
         if (!AuthManager.isAuthenticated(player)) {
             event.isCanceled = true

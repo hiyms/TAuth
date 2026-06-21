@@ -29,17 +29,16 @@ object ClientAuthHandler {
     /**
      * 由客户端玩家加入服务器事件触发：向服务端发起登录请求。
      */
-    fun onClientPlayerJoin() {
+    fun tryStartAuth(): Boolean {
         val mc = Minecraft.getInstance()
-        val name = mc.user?.name ?: return
-        if (!isAuthChannelAvailable()) return
+        val name = mc.user?.name ?: return false
+        if (!isAuthChannelAvailable()) return false
         val machineId = AutoLoginManager.machineId().toString()
         val cache = AutoLoginManager.load()
         val server = currentServerId()
         val mode = if (cache != null && cache.lastServer == server && cache.derivedKey.isNotEmpty()) "auto" else "login"
-        mc.executeBlocking {
-            AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
-        }
+        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
+        return true
     }
 
     /** 收到服务端挑战：尝试自动登录，否则弹登录界面。 */
@@ -132,7 +131,7 @@ object ClientAuthHandler {
     /** 弹出登录界面（LDLib ModularUIGuiContainer）。 */
     private fun showLoginScreen() {
         val mc = Minecraft.getInstance()
-        mc.executeBlocking {
+        mc.execute {
             val ui = LoginScreen.create(lastMessage)
             ui.initWidgets()
             val screen = ModularUIGuiContainer(ui, 0)
@@ -144,7 +143,7 @@ object ClientAuthHandler {
     /** 切换到注册界面。由登录界面的「注册」按钮调用。 */
     fun showRegisterScreen() {
         val mc = Minecraft.getInstance()
-        mc.executeBlocking {
+        mc.execute {
             val ui = RegisterScreen.create(lastMessage)
             ui.initWidgets()
             val screen = ModularUIGuiContainer(ui, 0)
@@ -161,7 +160,7 @@ object ClientAuthHandler {
     /** 关闭当前认证界面。 */
     private fun closeScreen() {
         val mc = Minecraft.getInstance()
-        mc.executeBlocking {
+        mc.execute {
             if (mc.screen === currentScreen) {
                 mc.setScreen(null)
             }

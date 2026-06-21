@@ -112,6 +112,7 @@ class PasswordStorage {
                 lastLoginType = loginType
             )
         )
+        commit()
     }
 
     /**
@@ -128,11 +129,13 @@ class PasswordStorage {
     fun changePassword(playerName: String, newPassword: String) {
         val data = repo.find(byName(playerName)).firstOrNull() ?: return
         repo.update(data.copy(passwordHash = hashPassword(newPassword)))
+        commit()
     }
 
     /** 删除玩家所有认证数据（由 /resetpasswd 触发）。 */
     fun delete(playerName: String) {
         repo.remove(byName(playerName))
+        commit()
     }
 
     fun get(playerName: String): PlayerAuthData? {
@@ -161,6 +164,7 @@ class PasswordStorage {
             verified = verified,
             lastLoginType = loginType
         ))
+        commit()
         return true
     }
 
@@ -172,12 +176,14 @@ class PasswordStorage {
     fun updateVerification(playerName: String, isPremium: Boolean, loginType: String) {
         val data = repo.find(byName(playerName)).firstOrNull() ?: return
         repo.update(data.copy(verified = data.verified || isPremium, lastLoginType = loginType))
+        commit()
     }
 
     /** 记录/更新自动登录绑定信息。 */
     fun updateAutoLogin(playerName: String, machineId: String?, ip: String?) {
         val data = repo.find(byName(playerName)).firstOrNull() ?: return
         repo.update(data.copy(autoLoginMachineId = machineId, autoLoginIp = ip))
+        commit()
     }
 
     fun isAutoLoginAllowed(playerName: String, machineId: String?, ip: String): Boolean {
@@ -199,6 +205,7 @@ class PasswordStorage {
     /** 直接插入一条数据（迁移用）。 */
     fun insertRaw(data: PlayerAuthData) {
         repo.insert(data)
+        commit()
     }
 
     fun hashPolicy(): HashPolicy = HashPolicy(
@@ -221,5 +228,12 @@ class PasswordStorage {
     private fun verifyPassword(input: String, stored: String): Boolean =
         PasswordHasher.verify(input, stored)
 
-    fun close() { db?.close() }
+    private fun commit() {
+        db?.commit()
+    }
+
+    fun close() {
+        db?.commit()
+        db?.close()
+    }
 }

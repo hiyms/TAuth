@@ -2,6 +2,7 @@ package top.tdrgame.auth.client
 
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent
+import net.minecraftforge.event.TickEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
 import net.minecraftforge.fml.common.Mod
 
@@ -16,9 +17,29 @@ import net.minecraftforge.fml.common.Mod
 @Mod.EventBusSubscriber(value = [Dist.CLIENT], bus = Mod.EventBusSubscriber.Bus.FORGE)
 object ClientEventListener {
 
+    private const val AUTH_START_RETRY_TICKS = 100
+    private var authStartRetries = 0
+
     @SubscribeEvent
     @JvmStatic
     fun onClientPlayerLogin(event: ClientPlayerNetworkEvent.LoggingIn) {
-        ClientAuthHandler.onClientPlayerJoin()
+        authStartRetries = AUTH_START_RETRY_TICKS
+    }
+
+    @SubscribeEvent
+    @JvmStatic
+    fun onClientPlayerLogout(event: ClientPlayerNetworkEvent.LoggingOut) {
+        authStartRetries = 0
+    }
+
+    @SubscribeEvent
+    @JvmStatic
+    fun onClientTick(event: TickEvent.ClientTickEvent) {
+        if (event.phase != TickEvent.Phase.END || authStartRetries <= 0) return
+        if (ClientAuthHandler.tryStartAuth()) {
+            authStartRetries = 0
+        } else {
+            authStartRetries--
+        }
     }
 }
