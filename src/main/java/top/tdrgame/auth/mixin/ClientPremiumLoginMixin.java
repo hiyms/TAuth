@@ -2,6 +2,7 @@ package top.tdrgame.auth.mixin;
 
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
+import top.tdrgame.auth.config.AuthConfig;
 import net.minecraft.client.multiplayer.ClientHandshakePacketListenerImpl;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketSendListener;
@@ -91,7 +92,7 @@ public abstract class ClientPremiumLoginMixin {
     private static boolean tauth$isPresent() {
         try {
             Class.forName("top.tdrgame.auth.TAuth");
-            return true;
+            return AuthConfig.INSTANCE.getPremiumAutoDetectionEnabled().get();
         } catch (ClassNotFoundException e) {
             return false;
         }
