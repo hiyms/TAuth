@@ -50,8 +50,20 @@ public abstract class ClientPremiumLoginMixin {
 
     @Unique
     private static Connection tauth$getConnection(Object self) throws ReflectiveOperationException {
-        java.lang.reflect.Field field = ClientHandshakePacketListenerImpl.class.getDeclaredField("connection");
-        field.setAccessible(true);
-        return (Connection) field.get(self);
+        return (Connection) tauth$field("connection", "f_104522_").get(self);
+    }
+
+    @Unique
+    private static java.lang.reflect.Field tauth$field(String deobf, String srg) throws NoSuchFieldException {
+        Class<?> type = ClientHandshakePacketListenerImpl.class;
+        try {
+            java.lang.reflect.Field f = type.getDeclaredField(deobf);
+            f.setAccessible(true);
+            return f;
+        } catch (NoSuchFieldException ignored) {
+            java.lang.reflect.Field f = type.getDeclaredField(srg);
+            f.setAccessible(true);
+            return f;
+        }
     }
 }
