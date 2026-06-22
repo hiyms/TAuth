@@ -5,13 +5,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientHandshakePacketListenerImpl;
 import net.minecraft.network.Connection;
 import net.minecraft.network.PacketSendListener;
-import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.login.ClientboundHelloPacket;
 import net.minecraft.network.protocol.login.ServerboundKeyPacket;
 import net.minecraft.util.Crypt;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -24,8 +22,6 @@ import java.security.PublicKey;
 
 @Mixin(ClientHandshakePacketListenerImpl.class)
 public abstract class ClientPremiumLoginMixin {
-
-    @Shadow private Connection connection;
 
     @Unique
     private static final Logger T_LOG = org.slf4j.LoggerFactory.getLogger("TAuth/ClientPremium");
@@ -56,10 +52,13 @@ public abstract class ClientPremiumLoginMixin {
         final ServerboundKeyPacket kp = keyPacket;
         final String sid = serverId;
 
+        final Connection conn = tauth$getConnection();
+        if (conn == null) return;
+
         Util.backgroundExecutor().execute(() -> {
             tauth$joinServerWithoutDisconnect(sid);
-            connection.send(kp, PacketSendListener.thenRun(
-                () -> connection.setEncryptionKey(dec, enc)));
+            conn.send(kp, PacketSendListener.thenRun(
+                () -> conn.setEncryptionKey(dec, enc)));
         });
     }
 
@@ -79,12 +78,36 @@ public abstract class ClientPremiumLoginMixin {
     }
 
     @Unique
+    private Connection tauth$getConnection() {
+        try {
+            return (Connection) tauth$field("connection", "f_104522_").get(this);
+        } catch (ReflectiveOperationException e) {
+            T_LOG.error("Cannot access connection field", e);
+            return null;
+        }
+    }
+
+    @Unique
     private static boolean tauth$isPresent() {
         try {
             Class.forName("top.tdrgame.auth.TAuth");
             return true;
         } catch (ClassNotFoundException e) {
             return false;
+        }
+    }
+
+    @Unique
+    private static java.lang.reflect.Field tauth$field(String deobf, String srg) throws NoSuchFieldException {
+        Class<?> type = ClientHandshakePacketListenerImpl.class;
+        try {
+            java.lang.reflect.Field f = type.getDeclaredField(deobf);
+            f.setAccessible(true);
+            return f;
+        } catch (NoSuchFieldException ignored) {
+            java.lang.reflect.Field f = type.getDeclaredField(srg);
+            f.setAccessible(true);
+            return f;
         }
     }
 }
