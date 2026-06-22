@@ -79,16 +79,16 @@ public abstract class PremiumLoginMixin {
         // Step 3 - async: hasJoined Mojang verification
         final byte[] sharedSecret = enc.getSharedSecret();
         PremiumLoginVerifier.INSTANCE.verifySessionAsync(server, connection, name, sharedSecret)
-            .whenComplete((result, throwable) -> server.execute(() -> {
+            .whenComplete((result, throwable) -> {
+                // Runs on worker thread, just like vanilla handleKey's spawned thread.
+                // verifiedSessions is ConcurrentHashMap — thread-safe.
                 if (throwable != null || result == null) {
-                    // hasJoined failed - allow offline fallback (AuthMe-compatible)
                     tauth$setState(tauth$state("NEGOTIATING"));
                     return;
                 }
-                // Record verified UUID but keep offline UUID for player data consistency
                 PremiumLoginVerifier.INSTANCE.storeVerified(name, result.getProfile().getId());
                 tauth$setState(tauth$state("NEGOTIATING"));
-            }));
+            });
     }
 
     @Unique
