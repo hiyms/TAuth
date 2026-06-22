@@ -9,6 +9,9 @@
         "PremiumLoginMixin",
         "ServerGamePacketMixin"
     ],
+    "client": [
+        "ClientPremiumLoginMixin"
+    ],
     "injectors": {
         "defaultRequire": 1
     }

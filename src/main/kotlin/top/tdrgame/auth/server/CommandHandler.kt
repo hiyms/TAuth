@@ -185,11 +185,6 @@ object CommandHandler {
             return
         }
 
-        if (AuthPackets.CHANNEL.isRemotePresent(player.connection.connection)) {
-            player.sendSystemMessage(Component.literal("你已安装 TAuth，正版免密将通过客户端自动识别，无需 /premium。").withStyle(net.minecraft.ChatFormatting.GREEN))
-            return
-        }
-
         PremiumLoginVerifier.addPending(name)
         player.connection.disconnect(Component.literal("正版免密待验证：请使用正版启动器重新进入服务器完成验证。"))
     }
