@@ -104,6 +104,28 @@ object CommandHandler {
                         return@executes 1
                     }))
 
+        // /unpremium [player] — 关闭正版免密
+        event.dispatcher.register(
+            Commands.literal("unpremium")
+                .executes { ctx ->
+                    val player = ctx.source.playerOrException
+                    if (!AuthConfig.enabled.get()) return@executes 1
+                    if (!AuthManager.isAuthenticated(player)) {
+                        player.sendSystemMessage(Component.literal("请先 /login 登录。").withStyle(net.minecraft.ChatFormatting.RED))
+                        return@executes 1
+                    }
+                    handleUnpremiumSelf(player)
+                    return@executes 1
+                }
+                .then(Commands.argument("player", StringArgumentType.word())
+                    .requires { it.hasPermission(2) }
+                    .executes { ctx ->
+                        val targetName = StringArgumentType.getString(ctx, "player")
+                        if (!AuthConfig.enabled.get()) return@executes 1
+                        handleUnpremiumTarget(targetName, ctx.source.playerOrException)
+                        return@executes 1
+                    }))
+
         // /setpasswd <player> <password> (OP only)
         event.dispatcher.register(
             Commands.literal("setpasswd")
@@ -121,6 +143,29 @@ object CommandHandler {
                             )
                             return@executes 1
                         })))
+    }
+
+    private fun handleUnpremiumSelf(player: ServerPlayer) {
+        val name = player.name.string
+        val storage = TAuthHolder.storage
+        if (!storage.isRegistered(name)) {
+            player.sendSystemMessage(Component.literal("未注册。").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+        storage.clearPremium(name)
+        PremiumLoginVerifier.consumeVerified(name)
+        player.sendSystemMessage(Component.literal("正版免密已关闭。").withStyle(net.minecraft.ChatFormatting.GREEN))
+    }
+
+    private fun handleUnpremiumTarget(targetName: String, sourcePlayer: ServerPlayer) {
+        val storage = TAuthHolder.storage
+        if (!storage.isRegistered(targetName)) {
+            sourcePlayer.sendSystemMessage(Component.literal("玩家 $targetName 未注册。").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+        storage.clearPremium(targetName)
+        PremiumLoginVerifier.consumeVerified(targetName)
+        sourcePlayer.sendSystemMessage(Component.literal("$targetName 的正版免密已关闭。").withStyle(net.minecraft.ChatFormatting.GREEN))
     }
 
     private fun handlePremium(player: ServerPlayer) {

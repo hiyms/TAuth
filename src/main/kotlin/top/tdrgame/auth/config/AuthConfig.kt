@@ -43,6 +43,9 @@ object AuthConfig {
     /** 客户端是否启用自动登录缓存。 */
     val autoLoginEnabled: ForgeConfigSpec.BooleanValue
 
+    /** 客户端是否探测并上报 Mojang 正版身份。默认为 true；设为 false 后始终走密码登录。 */
+    val premiumAutoDetectionEnabled: ForgeConfigSpec.BooleanValue
+
     init {
         val serverBuilder = ForgeConfigSpec.Builder()
         serverBuilder.push("auth")
@@ -67,6 +70,8 @@ object AuthConfig {
         clientBuilder.push("client")
         autoLoginEnabled = clientBuilder.comment("Enable automatic login cache on this client")
             .define("autoLoginEnabled", true)
+        premiumAutoDetectionEnabled = clientBuilder.comment("Detect and report Mojang premium status to server (disable to always use password login)")
+            .define("premiumAutoDetectionEnabled", true)
         clientBuilder.pop()
         clientSpec = clientBuilder.build()
     }

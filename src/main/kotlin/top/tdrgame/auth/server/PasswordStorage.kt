@@ -170,6 +170,13 @@ class PasswordStorage(
         commit()
     }
 
+    /** 清除玩家的正版免密标记（由 /unpremium 触发）。 */
+    fun clearPremium(playerName: String) {
+        val data = repo.find(byName(playerName)).firstOrNull() ?: return
+        repo.update(data.copy(verified = false, premiumUuid = null))
+        commit()
+    }
+
     fun get(playerName: String): PlayerAuthData? {
         return repo.find(byName(playerName)).firstOrNull()
     }

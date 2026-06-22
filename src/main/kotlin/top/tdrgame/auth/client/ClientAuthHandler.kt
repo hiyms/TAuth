@@ -6,6 +6,7 @@ import net.minecraft.client.Minecraft
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.api.distmarker.OnlyIn
 import net.minecraft.network.chat.Component
+import top.tdrgame.auth.config.AuthConfig
 import top.tdrgame.auth.i18n.I18nKeys
 import top.tdrgame.auth.network.AuthPackets
 import java.util.concurrent.CompletableFuture
@@ -194,6 +195,7 @@ object ClientAuthHandler {
     }
 
     private fun isPremiumSessionAvailable(): Boolean {
+        if (!AuthConfig.premiumAutoDetectionEnabled.get()) return false
         val token = Minecraft.getInstance().user?.accessToken ?: return false
         return !isMissingSessionToken(token)
     }
