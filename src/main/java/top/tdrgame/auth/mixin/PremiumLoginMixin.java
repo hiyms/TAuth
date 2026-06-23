@@ -6,6 +6,7 @@ import net.minecraft.network.protocol.login.ClientboundHelloPacket;
 import net.minecraft.network.protocol.login.ServerboundHelloPacket;
 import net.minecraft.network.protocol.login.ServerboundKeyPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.login.ClientboundLoginDisconnectPacket;
 import net.minecraft.server.network.ServerLoginPacketListenerImpl;
@@ -92,12 +93,10 @@ public abstract class PremiumLoginMixin {
             });
     }
 
-    /** Inject textures into gameProfile BEFORE placeNewPlayer sends initial player info. */
-    @Inject(method = "handleAcceptedLogin", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;placeNewPlayer(Lnet/minecraft/network/Connection;Lnet/minecraft/server/level/ServerPlayer;)V"))
-    private void tauth$injectTexturesBeforeBroadcast(CallbackInfo ci) {
-        if (this.tauth$premiumName != null) return;
-        GameProfile profile = tauth$getGameProfile();
-        if (profile == null) return;
+    /** Inject textures into the ServerPlayer's GameProfile BEFORE initial broadcast. */
+    @Inject(method = "placeNewPlayer", at = @At("HEAD"))
+    private void tauth$injectTexturesBeforePlace(ServerPlayer player, CallbackInfo ci) {
+        GameProfile profile = player.getGameProfile();
         Collection<com.mojang.authlib.properties.Property> textures = PremiumLoginVerifier.INSTANCE.consumeTextures(profile.getName());
         if (textures != null && !textures.isEmpty()) {
             profile.getProperties().removeAll("textures");

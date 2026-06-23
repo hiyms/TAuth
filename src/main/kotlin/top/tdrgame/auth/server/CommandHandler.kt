@@ -431,26 +431,27 @@ object CommandHandler {
 
                     val storage = TAuthHolder.storage
                     val data = storage.get(name)
+                    val textures = result.properties["textures"]
                     val verified = data?.verified == true
                     val premiumUuid = data?.premiumUuid
 
                     if (verified && (premiumUuid == null || premiumUuid == result.id)) {
                         // Already verified premium account: auto-pass
                         storage.updateVerification(name, isPremium = true, loginType = "online")
-                        PremiumLoginVerifier.storeVerified(name, result.id)
+                        PremiumLoginVerifier.storeVerified(name, result.id, textures)
                         finishLogin(player)
                         AuthPackets.sendToPlayer(player,
                             result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.LOGIN_SUCCESS)))
                     } else if (data == null) {
                         // Not registered: prompt register, but mark premium proof for auto-verified on register
-                        PremiumLoginVerifier.storeVerified(name, result.id)
+                        PremiumLoginVerifier.storeVerified(name, result.id, textures)
                         TAuth.LOGGER.info("Premium auto-proof succeeded for {} but not yet registered", name)
                         AuthPackets.sendToPlayer(player,
                             result(false, AuthPackets.CODE_NOT_REGISTERED,
                                 ServerI18n.fallback(I18nKeys.NOT_REGISTERED_GUI), policy = storage.hashPolicy()))
                     } else {
                         // Registered but not yet verified: still need one password login
-                        PremiumLoginVerifier.storeVerified(name, result.id)
+                        PremiumLoginVerifier.storeVerified(name, result.id, textures)
                         TAuth.LOGGER.info("Premium auto-proof succeeded for {} but account not yet verified - falling back to password", name)
                         sendPasswordChallenge(player)
                     }
