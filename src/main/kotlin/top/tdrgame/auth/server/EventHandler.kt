@@ -54,7 +54,7 @@ object EventHandler {
         val player = event.entity as? ServerPlayer ?: return
         val name = player.name.string
         if (!AuthConfig.enabled.get()) {
-            TAuth.LOGGER.info("Auth disabled: allowing player {} without authentication checks.", name)
+            TAuth.LOGGER.debug("Auth disabled: allowing player {} without authentication checks.", name)
             return
         }
 
@@ -72,7 +72,7 @@ object EventHandler {
             player.health = player.maxHealth
         }
 
-        TAuth.LOGGER.info("Auth enabled: player {} joined. premium={}, registered={}, verified={}",
+        TAuth.LOGGER.debug("Player {} joined. premium={}, registered={}, verified={}",
             name, isPremium, isRegistered, isVerified)
         AuthManager.onPlayerJoin(player, isPremium, isVerified, isRegistered)
 
@@ -82,17 +82,17 @@ object EventHandler {
             val profile = player.gameProfile
             profile.properties.removeAll("textures")
             textures.forEach { profile.properties.put("textures", it) }
-            TAuth.LOGGER.info("Applied Mojang textures for {}", name)
+            TAuth.LOGGER.debug("Applied Mojang textures for {}", name)
             // Refresh player list to show updated skin
             player.server.playerList.sendAllPlayerInfo(player)
         }
 
         if (!AuthManager.isAuthenticated(player)) {
-            TAuth.LOGGER.info("Auth enforcement active for player {}; hiding inventory and waiting for login/register.", name)
+            TAuth.LOGGER.debug("Auth enforcement active for player {}; hiding inventory and waiting for login/register.", name)
             hideInventoryForAuth(player)
             AuthPackets.sendToPlayerIfPresent(player, AuthPackets.StartAuthPacket())
         } else {
-            TAuth.LOGGER.info("Player {} is already authenticated by policy; no login prompt required.", name)
+            TAuth.LOGGER.debug("Player {} is already authenticated by policy; no login prompt required.", name)
         }
     }
 

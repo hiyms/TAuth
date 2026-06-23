@@ -286,7 +286,7 @@ object CommandHandler {
     /** 客户端发起登录请求：可先尝试 premium auto-proof，再回退密码挑战。 */
     fun handleLoginRequest(player: ServerPlayer, packet: AuthPackets.LoginRequestPacket) {
         if (!AuthConfig.enabled.get()) {
-            TAuth.LOGGER.info("Ignoring client auth request from {} because authentication is disabled.", player.name.string)
+            TAuth.LOGGER.debug("Ignoring client auth request from {} because authentication is disabled.", player.name.string)
             AuthPackets.sendToPlayer(player,
                 result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.AUTH_DISABLED)))
             return
@@ -303,7 +303,6 @@ object CommandHandler {
             if (pendingPremiumProofs.containsKey(name)) return // 去重：已有 pending nonce
             val nonce = PremiumLoginVerifier.newNonceString()
             pendingPremiumProofs[name] = nonce
-            TAuth.LOGGER.info("Client reports premium for {}, sending nonce for verification", name)
             AuthPackets.sendToPlayer(player, AuthPackets.PremiumProofRequestPacket(nonce))
             return
         }
