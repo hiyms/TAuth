@@ -37,8 +37,14 @@ object AuthConfig {
     /** PBKDF2 输出密钥位数。默认 256。 */
     val keyLengthBits: ForgeConfigSpec.IntValue
 
+    /** 当客户端安装 TAuth 时，是否自动通过 Mojang 会话证明该客户端正版身份，跳过 /premium。 */
+    val premiumAutoProofEnabled: ForgeConfigSpec.BooleanValue
+
     /** 客户端是否启用自动登录缓存。 */
     val autoLoginEnabled: ForgeConfigSpec.BooleanValue
+
+    /** 客户端是否探测并上报 Mojang 正版身份。默认为 true；设为 false 后始终走密码登录。 */
+    val premiumAutoDetectionEnabled: ForgeConfigSpec.BooleanValue
 
     init {
         val serverBuilder = ForgeConfigSpec.Builder()
@@ -55,6 +61,8 @@ object AuthConfig {
             .defineInRange("iterations", 10000, 1000, 500000)
         keyLengthBits = serverBuilder.comment("PBKDF2 derived key length in bits")
             .defineInRange("keyLengthBits", 256, 128, 512)
+        premiumAutoProofEnabled = serverBuilder.comment("When a client also installs TAuth, auto-detect and prove premium status via Mojang session")
+            .define("premiumAutoProofEnabled", true)
         serverBuilder.pop()
         spec = serverBuilder.build()
 
@@ -62,6 +70,8 @@ object AuthConfig {
         clientBuilder.push("client")
         autoLoginEnabled = clientBuilder.comment("Enable automatic login cache on this client")
             .define("autoLoginEnabled", true)
+        premiumAutoDetectionEnabled = clientBuilder.comment("Detect and report Mojang premium status to server (disable to always use password login)")
+            .define("premiumAutoDetectionEnabled", true)
         clientBuilder.pop()
         clientSpec = clientBuilder.build()
     }

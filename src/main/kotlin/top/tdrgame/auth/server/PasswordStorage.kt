@@ -10,6 +10,7 @@ import org.dizitart.no2.mvstore.MVStoreModule
 import org.dizitart.no2.repository.ObjectRepository
 import org.dizitart.no2.repository.annotations.Id
 import top.tdrgame.auth.config.AuthConfig
+import java.util.UUID
 
 /**
  * 存储在 Nitrite 数据库中的玩家认证数据。
@@ -24,6 +25,8 @@ data class PlayerAuthData(
     val verified: Boolean = false,
     /** 上次登录类型："online" 或 "offline"，null 表示从未登录过。 */
     val lastLoginType: String? = null,
+    /** 已验证的 Mojang 正版 UUID；存在时后续同名连接会尝试原版加密握手免密。 */
+    val premiumUuid: UUID? = null,
     /** 客户端自动登录绑定的机器 ID。 */
     val autoLoginMachineId: String? = null,
     /** 客户端自动登录绑定的上次来源 IP（服务端观察值）。 */
@@ -39,6 +42,7 @@ class PlayerAuthDataConverter : EntityConverter<PlayerAuthData> {
             .put("passwordHash", entity.passwordHash)
             .put("verified", entity.verified)
             .put("lastLoginType", entity.lastLoginType)
+            .put("premiumUuid", entity.premiumUuid?.toString())
             .put("autoLoginMachineId", entity.autoLoginMachineId)
             .put("autoLoginIp", entity.autoLoginIp)
 
@@ -48,6 +52,7 @@ class PlayerAuthDataConverter : EntityConverter<PlayerAuthData> {
             passwordHash = document.get("passwordHash", String::class.java) ?: "",
             verified = document.get("verified", java.lang.Boolean::class.java)?.booleanValue() ?: false,
             lastLoginType = document.get("lastLoginType", String::class.java),
+            premiumUuid = document.get("premiumUuid", String::class.java)?.let { runCatching { UUID.fromString(it) }.getOrNull() },
             autoLoginMachineId = document.get("autoLoginMachineId", String::class.java),
             autoLoginIp = document.get("autoLoginIp", String::class.java)
         )
@@ -111,13 +116,14 @@ class PasswordStorage(
     /**
      * 注册新玩家，密码以 PBKDF2 哈希存储。
      */
-    fun register(playerName: String, password: String, verified: Boolean = false, loginType: String? = null) {
+    fun register(playerName: String, password: String, verified: Boolean = false, loginType: String? = null, premiumUuid: UUID? = null) {
         repo.insert(
             PlayerAuthData(
                 playerName = playerName,
                 passwordHash = hashPassword(password),
                 verified = verified,
-                lastLoginType = loginType
+                lastLoginType = loginType,
+                premiumUuid = premiumUuid
             )
         )
         commit()
@@ -150,6 +156,7 @@ class PasswordStorage(
             repo.update(data.copy(
                 passwordHash = hash,
                 verified = false,
+                premiumUuid = null,
                 lastLoginType = null,
                 autoLoginMachineId = null,
                 autoLoginIp = null
@@ -161,6 +168,13 @@ class PasswordStorage(
     /** 删除玩家所有认证数据（由 /resetpasswd 触发）。 */
     fun delete(playerName: String) {
         repo.remove(byName(playerName))
+        commit()
+    }
+
+    /** 清除玩家的正版免密标记（由 /unpremium 触发）。 */
+    fun clearPremium(playerName: String) {
+        val data = repo.find(byName(playerName)).firstOrNull() ?: return
+        repo.update(data.copy(verified = false, premiumUuid = null))
         commit()
     }
 
@@ -181,14 +195,15 @@ class PasswordStorage(
      * 客户端已在本地完成 PBKDF2 并提交哈希字符串，服务端校验格式后落库。
      * @return 是否注册成功（已存在或格式非法则返回 false）。
      */
-    fun registerWithHash(playerName: String, passwordHash: String, verified: Boolean = false, loginType: String? = null): Boolean {
+    fun registerWithHash(playerName: String, passwordHash: String, verified: Boolean = false, loginType: String? = null, premiumUuid: UUID? = null): Boolean {
         if (repo.find(byName(playerName)).firstOrNull() != null) return false
         if (PasswordHasher.parse(passwordHash) == null) return false
         repo.insert(PlayerAuthData(
             playerName = playerName,
             passwordHash = passwordHash,
             verified = verified,
-            lastLoginType = loginType
+            lastLoginType = loginType,
+            premiumUuid = premiumUuid
         ))
         commit()
         return true
@@ -198,10 +213,17 @@ class PasswordStorage(
     fun hasPremiumHistory(playerName: String): Boolean =
         repo.find(byName(playerName)).firstOrNull()?.verified == true
 
+    fun getPremiumUuid(playerName: String): UUID? =
+        repo.find(byName(playerName)).firstOrNull()?.premiumUuid
+
     /** 更新 verified 标志和登录类型。verified 为曾经正版验证过，离线登录不会清除它。 */
-    fun updateVerification(playerName: String, isPremium: Boolean, loginType: String) {
+    fun updateVerification(playerName: String, isPremium: Boolean, loginType: String, premiumUuid: UUID? = null) {
         val data = repo.find(byName(playerName)).firstOrNull() ?: return
-        repo.update(data.copy(verified = data.verified || isPremium, lastLoginType = loginType))
+        repo.update(data.copy(
+            verified = data.verified || isPremium,
+            lastLoginType = loginType,
+            premiumUuid = premiumUuid ?: data.premiumUuid
+        ))
         commit()
     }
 

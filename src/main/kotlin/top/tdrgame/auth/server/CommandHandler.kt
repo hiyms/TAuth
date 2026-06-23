@@ -78,6 +78,16 @@ object CommandHandler {
                         return@executes 1
                     }))
 
+        // /premium — opt into AuthMe-style premium bypass after password login
+        event.dispatcher.register(
+            Commands.literal("premium")
+                .executes { ctx ->
+                    val player = ctx.source.playerOrException
+                    if (!AuthConfig.enabled.get()) return@executes 1
+                    handlePremium(player)
+                    return@executes 1
+                })
+
         // /resetpasswd <player> (OP only)
         event.dispatcher.register(
             Commands.literal("resetpasswd")
@@ -91,6 +101,28 @@ object CommandHandler {
                             { ServerI18n.text(I18nKeys.RESET_SUCCESS, targetName).withStyle(net.minecraft.ChatFormatting.GREEN) },
                             true
                         )
+                        return@executes 1
+                    }))
+
+        // /unpremium [player] — 关闭正版免密
+        event.dispatcher.register(
+            Commands.literal("unpremium")
+                .executes { ctx ->
+                    val player = ctx.source.playerOrException
+                    if (!AuthConfig.enabled.get()) return@executes 1
+                    if (!AuthManager.isAuthenticated(player)) {
+                        player.sendSystemMessage(Component.literal("请先 /login 登录。").withStyle(net.minecraft.ChatFormatting.RED))
+                        return@executes 1
+                    }
+                    handleUnpremiumSelf(player)
+                    return@executes 1
+                }
+                .then(Commands.argument("player", StringArgumentType.word())
+                    .requires { it.hasPermission(2) }
+                    .executes { ctx ->
+                        val targetName = StringArgumentType.getString(ctx, "player")
+                        if (!AuthConfig.enabled.get()) return@executes 1
+                        handleUnpremiumTarget(targetName, ctx.source)
                         return@executes 1
                     }))
 
@@ -111,6 +143,50 @@ object CommandHandler {
                             )
                             return@executes 1
                         })))
+    }
+
+    private fun handleUnpremiumSelf(player: ServerPlayer) {
+        val name = player.name.string
+        val storage = TAuthHolder.storage
+        if (!storage.isRegistered(name)) {
+            player.sendSystemMessage(Component.literal("未注册。").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+        storage.clearPremium(name)
+        PremiumLoginVerifier.consumeVerified(name)
+        player.sendSystemMessage(Component.literal("正版免密已关闭。").withStyle(net.minecraft.ChatFormatting.GREEN))
+    }
+
+    private fun handleUnpremiumTarget(targetName: String, source: net.minecraft.commands.CommandSourceStack) {
+        val storage = TAuthHolder.storage
+        if (!storage.isRegistered(targetName)) {
+            source.sendFailure(Component.literal("玩家 $targetName 未注册。"))
+            return
+        }
+        storage.clearPremium(targetName)
+        PremiumLoginVerifier.consumeVerified(targetName)
+        source.sendSuccess({ Component.literal("$targetName 的正版免密已关闭。").withStyle(net.minecraft.ChatFormatting.GREEN) }, true)
+    }
+
+    private fun handlePremium(player: ServerPlayer) {
+        val name = player.name.string
+        val storage = TAuthHolder.storage
+        val data = storage.get(name)
+        if (data == null) {
+            player.sendSystemMessage(Component.literal("请先 /register 注册账号。").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+        if (!AuthManager.isAuthenticated(player)) {
+            player.sendSystemMessage(Component.literal("请先 /login 登录后再启用正版免密。").withStyle(net.minecraft.ChatFormatting.RED))
+            return
+        }
+        if (data.verified && data.premiumUuid != null) {
+            player.sendSystemMessage(Component.literal("正版免密已启用。").withStyle(net.minecraft.ChatFormatting.YELLOW))
+            return
+        }
+
+        PremiumLoginVerifier.addPending(name)
+        player.connection.disconnect(Component.literal("正版免密待验证：请使用正版启动器重新进入服务器完成验证。"))
     }
 
     private fun resetPlayerPassword(targetName: String, target: ServerPlayer?) {
@@ -198,15 +274,19 @@ object CommandHandler {
     /** 服务端待处理挑战：玩家名 → challenge 会话。仅在内存，登录完成即清除。 */
     private val pendingChallenges = ConcurrentHashMap<String, ChallengeSession>()
 
+    /** 服务端待处理 premium proof：玩家名 → nonce。 */
+    private val pendingPremiumProofs = ConcurrentHashMap<String, String>()
+
     /** 玩家离线、被重置或被踢出时清理未完成的挑战会话。 */
     fun clearPendingChallenge(playerName: String) {
         pendingChallenges.remove(playerName)
+        pendingPremiumProofs.remove(playerName)
     }
 
-    /** 客户端发起登录请求：生成挑战并回发。 */
+    /** 客户端发起登录请求：可先尝试 premium auto-proof，再回退密码挑战。 */
     fun handleLoginRequest(player: ServerPlayer, packet: AuthPackets.LoginRequestPacket) {
         if (!AuthConfig.enabled.get()) {
-            TAuth.LOGGER.info("Ignoring client auth request from {} because authentication is disabled.", player.name.string)
+            TAuth.LOGGER.debug("Ignoring client auth request from {} because authentication is disabled.", player.name.string)
             AuthPackets.sendToPlayer(player,
                 result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.AUTH_DISABLED)))
             return
@@ -215,6 +295,15 @@ object CommandHandler {
         val storage = TAuthHolder.storage
         if (AuthManager.isAuthenticated(player)) {
             AuthPackets.sendToPlayer(player, result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.ALREADY_AUTHENTICATED)))
+            return
+        }
+
+        // 客户端上报正版能力 → 尝试 premium auto-proof
+        if (packet.premiumAvailable && AuthConfig.premiumAutoProofEnabled.get()) {
+            if (pendingPremiumProofs.containsKey(name)) return // 去重：已有 pending nonce
+            val nonce = PremiumLoginVerifier.newNonceString()
+            pendingPremiumProofs[name] = nonce
+            AuthPackets.sendToPlayer(player, AuthPackets.PremiumProofRequestPacket(nonce))
             return
         }
 
@@ -321,6 +410,75 @@ object CommandHandler {
         iterations = policy.iterations,
         keyBits = policy.keyLengthBits
     )
+
+    fun handlePremiumProofResponse(player: ServerPlayer, packet: AuthPackets.PremiumProofResponsePacket) {
+        if (!AuthConfig.enabled.get()) return
+        val name = player.name.string
+        val nonce = pendingPremiumProofs.remove(name) ?: return
+        if (nonce != packet.nonce || !packet.accepted) {
+            sendPasswordChallenge(player)
+            return
+        }
+
+        PremiumLoginVerifier.verifyNonceAsync(player.server, player.name.string, nonce)
+            .whenComplete { result, throwable ->
+                player.server.execute {
+                    val current = player.server.playerList.getPlayerByName(name)
+                    if (current !== player || !player.connection.connection.isConnected || AuthManager.isAuthenticated(player)) {
+                        return@execute
+                    }
+                    if (throwable != null || result == null) {
+                        TAuth.LOGGER.info("Premium auto-proof failed for {}, falling back to password", name)
+                        sendPasswordChallenge(player)
+                        return@execute
+                    }
+
+                    val storage = TAuthHolder.storage
+                    val data = storage.get(name)
+                    val textures = result.properties["textures"]
+                    val verified = data?.verified == true
+                    val premiumUuid = data?.premiumUuid
+
+                    if (verified && (premiumUuid == null || premiumUuid == result.id)) {
+                        // Already verified premium account: auto-pass
+                        storage.updateVerification(name, isPremium = true, loginType = "online")
+                        PremiumLoginVerifier.storeVerified(name, result.id, textures)
+                        finishLogin(player)
+                        AuthPackets.sendToPlayer(player,
+                            result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.LOGIN_SUCCESS)))
+                    } else if (data == null) {
+                        // Not registered: prompt register, but mark premium proof for auto-verified on register
+                        PremiumLoginVerifier.storeVerified(name, result.id, textures)
+                        TAuth.LOGGER.info("Premium auto-proof succeeded for {} but not yet registered", name)
+                        AuthPackets.sendToPlayer(player,
+                            result(false, AuthPackets.CODE_NOT_REGISTERED,
+                                ServerI18n.fallback(I18nKeys.NOT_REGISTERED_GUI), policy = storage.hashPolicy()))
+                    } else {
+                        // Registered but not yet verified: still need one password login
+                        PremiumLoginVerifier.storeVerified(name, result.id, textures)
+                        TAuth.LOGGER.info("Premium auto-proof succeeded for {} but account not yet verified - falling back to password", name)
+                        sendPasswordChallenge(player)
+                    }
+                }
+            }
+    }
+
+    private fun sendPasswordChallenge(player: ServerPlayer) {
+        val name = player.name.string
+        val storage = TAuthHolder.storage
+        val params = storage.getHashParams(name)
+        if (params == null) {
+            AuthPackets.sendToPlayer(player,
+                result(false, AuthPackets.CODE_NOT_REGISTERED,
+                    ServerI18n.fallback(I18nKeys.NOT_REGISTERED_GUI), policy = storage.hashPolicy()))
+            return
+        }
+        val challenge = SecureRandom().nextLong()
+        val expected = AuthPackets.challengeResponse(params.hash, challenge)
+        pendingChallenges[name] = ChallengeSession(challenge, expected, params.hash, null, false)
+        AuthPackets.sendToPlayer(player,
+            AuthPackets.ChallengePacket(challenge, params.salt, params.iterations, params.keyLengthBits, false))
+    }
 
     private fun configuredHashPolicy(): PasswordStorage.HashPolicy = PasswordStorage.HashPolicy(
         saltBytes = AuthConfig.saltBytes.get().coerceIn(PasswordStorage.LEGACY_SALT_BYTES, 64),

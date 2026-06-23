@@ -6,8 +6,11 @@ import net.minecraft.client.Minecraft
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.api.distmarker.OnlyIn
 import net.minecraft.network.chat.Component
+import top.tdrgame.auth.config.AuthConfig
 import top.tdrgame.auth.i18n.I18nKeys
 import top.tdrgame.auth.network.AuthPackets
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * 客户端侧认证协调器。
@@ -49,13 +52,38 @@ object ClientAuthHandler {
         loginMessage = ""
         registerMessage = ""
         authFlowEnding = false
-        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
+        val premiumAvailable = isPremiumSessionAvailable()
+        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId, premiumAvailable))
         return true
     }
 
     /** 收到服务端认证提示：启动自动登录或普通登录流程。 */
     fun onServerAuthPrompt(packet: AuthPackets.StartAuthPacket) {
         tryStartAuth()
+    }
+
+    /** 收到服务端正版证明请求：本地调用 Mojang joinServer，不泄露 token。 */
+    fun onPremiumProofRequest(packet: AuthPackets.PremiumProofRequestPacket) {
+        val mc = Minecraft.getInstance()
+        val profile = mc.user?.gameProfile
+        val token = mc.user?.accessToken
+        if (profile == null || token.isNullOrBlank() || isMissingSessionToken(token)) {
+            AuthPackets.sendToServer(AuthPackets.PremiumProofResponsePacket(false, packet.nonce))
+            return
+        }
+
+        CompletableFuture.supplyAsync {
+            try {
+                mc.minecraftSessionService.joinServer(profile, token, packet.nonce)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }.orTimeout(30, TimeUnit.SECONDS)
+            .exceptionally { false }
+            .thenAccept { accepted ->
+                AuthPackets.sendToServer(AuthPackets.PremiumProofResponsePacket(accepted, packet.nonce))
+            }
     }
 
     /** 收到服务端挑战：尝试自动登录，否则弹登录界面。 */
@@ -163,8 +191,17 @@ object ClientAuthHandler {
 
     private fun sendLoginRequest(mode: String, name: String) {
         val machineId = if (AutoLoginManager.isAutoLoginEnabled()) AutoLoginManager.machineId().toString() else null
-        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
+        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId, isPremiumSessionAvailable()))
     }
+
+    private fun isPremiumSessionAvailable(): Boolean {
+        if (!AuthConfig.premiumAutoDetectionEnabled.get()) return false
+        val token = Minecraft.getInstance().user?.accessToken ?: return false
+        return !isMissingSessionToken(token)
+    }
+
+    private fun isMissingSessionToken(token: String): Boolean =
+        token == "0" || token.equals("invalid", ignoreCase = true) || token.equals("missing", ignoreCase = true)
 
     private fun applyLegacyAutoLoginMigrationOnce() {
         if (legacyAutoLoginMigrated) return
