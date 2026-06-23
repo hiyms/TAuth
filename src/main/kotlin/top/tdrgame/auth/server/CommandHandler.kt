@@ -300,6 +300,7 @@ object CommandHandler {
 
         // 客户端上报正版能力 → 尝试 premium auto-proof
         if (packet.premiumAvailable && AuthConfig.premiumAutoProofEnabled.get()) {
+            if (pendingPremiumProofs.containsKey(name)) return // 去重：已有 pending nonce
             val nonce = PremiumLoginVerifier.newNonceString()
             pendingPremiumProofs[name] = nonce
             TAuth.LOGGER.info("Client reports premium for {}, sending nonce for verification", name)
