@@ -30,7 +30,16 @@ object LoginScreen {
         currentPassword = ""
         val showAutoLoginWarning = !ClientAuthHandler.isAutoLoginEnabled()
         val height = if (showAutoLoginWarning) 132 else 118
-        val group = WidgetGroup(0, 0, 176, height).setClientSideWidget()
+        val group = object : WidgetGroup(0, 0, 176, height) {
+            override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+                if (super.keyPressed(keyCode, scanCode, modifiers)) return true
+                if (keyCode == 257 || keyCode == 335) {
+                    ClientAuthHandler.submitPassword(currentPassword)
+                    return true
+                }
+                return false
+            }
+        }.setClientSideWidget()
 
         group.addWidget(ImageWidget(0, 0, 176, height, ResourceBorderTexture.BORDERED_BACKGROUND)
             .setClientSideWidget())

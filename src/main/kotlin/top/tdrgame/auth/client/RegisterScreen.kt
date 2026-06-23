@@ -30,7 +30,16 @@ object RegisterScreen {
     fun create(message: String = ""): ModularUI {
         currentPassword = ""
         currentConfirm = ""
-        val group = WidgetGroup(0, 0, 196, 146).setClientSideWidget()
+        val group = object : WidgetGroup(0, 0, 196, 146) {
+            override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+                if (super.keyPressed(keyCode, scanCode, modifiers)) return true
+                if (keyCode == 257 || keyCode == 335) {
+                    ClientAuthHandler.submitRegister(currentPassword, currentConfirm)
+                    return true
+                }
+                return false
+            }
+        }.setClientSideWidget()
 
         group.addWidget(ImageWidget(0, 0, 196, 146, ResourceBorderTexture.BORDERED_BACKGROUND)
             .setClientSideWidget())
