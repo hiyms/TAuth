@@ -37,9 +37,6 @@ object AuthConfig {
     /** PBKDF2 输出密钥位数。默认 256。 */
     val keyLengthBits: ForgeConfigSpec.IntValue
 
-    /** 是否启用内置 Mojang 会话证明，用于客户端安装 TAuth 时在离线服识别正版会话。 */
-    val premiumSessionProofEnabled: ForgeConfigSpec.BooleanValue
-
     /** 客户端是否启用自动登录缓存。 */
     val autoLoginEnabled: ForgeConfigSpec.BooleanValue
 
@@ -58,8 +55,6 @@ object AuthConfig {
             .defineInRange("iterations", 10000, 1000, 500000)
         keyLengthBits = serverBuilder.comment("PBKDF2 derived key length in bits")
             .defineInRange("keyLengthBits", 256, 128, 512)
-        premiumSessionProofEnabled = serverBuilder.comment("Enable optional Mojang session proof for clients with TAuth installed")
-            .define("premiumSessionProofEnabled", true)
         serverBuilder.pop()
         spec = serverBuilder.build()
 

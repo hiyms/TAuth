@@ -8,8 +8,6 @@ import net.minecraftforge.api.distmarker.OnlyIn
 import net.minecraft.network.chat.Component
 import top.tdrgame.auth.i18n.I18nKeys
 import top.tdrgame.auth.network.AuthPackets
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 
 /**
  * 客户端侧认证协调器。
@@ -58,30 +56,6 @@ object ClientAuthHandler {
     /** 收到服务端认证提示：启动自动登录或普通登录流程。 */
     fun onServerAuthPrompt(packet: AuthPackets.StartAuthPacket) {
         tryStartAuth()
-    }
-
-    /** 收到服务端正版证明请求：本地调用 Mojang joinServer，token 不发送给服务端。 */
-    fun onPremiumProofRequest(packet: AuthPackets.PremiumProofRequestPacket) {
-        val mc = Minecraft.getInstance()
-        val profile = mc.user?.gameProfile
-        val token = mc.user?.accessToken
-        if (profile == null || token.isNullOrBlank() || isMissingSessionToken(token)) {
-            AuthPackets.sendToServer(AuthPackets.PremiumProofResponsePacket(false, packet.nonce))
-            return
-        }
-
-        CompletableFuture.supplyAsync {
-            try {
-                mc.minecraftSessionService.joinServer(profile, token, packet.nonce)
-                true
-            } catch (_: Throwable) {
-                false
-            }
-        }.orTimeout(30, TimeUnit.SECONDS)
-            .exceptionally { false }
-            .thenAccept { accepted ->
-                AuthPackets.sendToServer(AuthPackets.PremiumProofResponsePacket(accepted, packet.nonce))
-            }
     }
 
     /** 收到服务端挑战：尝试自动登录，否则弹登录界面。 */
@@ -197,9 +171,6 @@ object ClientAuthHandler {
         legacyAutoLoginMigrated = true
         AutoLoginManager.applyLegacyConfigMigration()
     }
-
-    private fun isMissingSessionToken(token: String): Boolean =
-        token == "0" || token.equals("invalid", ignoreCase = true) || token.equals("missing", ignoreCase = true)
 
     private fun messageKey(code: String): String = when (code) {
         AuthPackets.CODE_REGISTER_OK -> I18nKeys.REGISTER_SUCCESS

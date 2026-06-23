@@ -198,64 +198,9 @@ object CommandHandler {
     /** 服务端待处理挑战：玩家名 → challenge 会话。仅在内存，登录完成即清除。 */
     private val pendingChallenges = ConcurrentHashMap<String, ChallengeSession>()
 
-    /** 服务端待处理正版证明：玩家名 → nonce。 */
-    private val pendingPremiumProofs = ConcurrentHashMap<String, String>()
-
     /** 玩家离线、被重置或被踢出时清理未完成的挑战会话。 */
     fun clearPendingChallenge(playerName: String) {
         pendingChallenges.remove(playerName)
-        pendingPremiumProofs.remove(playerName)
-    }
-
-    fun requestPremiumProof(player: ServerPlayer): Boolean {
-        if (!AuthConfig.enabled.get()) return false
-        if (!AuthConfig.premiumSessionProofEnabled.get()) return false
-        if (AuthManager.isAuthenticated(player)) return false
-        val nonce = PremiumSessionVerifier.newNonce()
-        val sent = AuthPackets.sendToPlayerIfPresent(player, AuthPackets.PremiumProofRequestPacket(nonce))
-        if (sent) {
-            pendingPremiumProofs[player.name.string] = nonce
-        }
-        return sent
-    }
-
-    fun handlePremiumProofResponse(player: ServerPlayer, packet: AuthPackets.PremiumProofResponsePacket) {
-        if (!AuthConfig.enabled.get()) return
-        val name = player.name.string
-        val nonce = pendingPremiumProofs.remove(name) ?: return
-        if (nonce != packet.nonce || !packet.accepted) {
-            AuthPackets.sendToPlayer(player, AuthPackets.StartAuthPacket())
-            return
-        }
-
-        PremiumSessionVerifier.verifyAsync(name, nonce).whenComplete { result, throwable ->
-            player.server.execute {
-                if (throwable != null || result == null) {
-                    TAuth.LOGGER.info("Premium proof rejected for {}", name)
-                    AuthPackets.sendToPlayer(player, AuthPackets.StartAuthPacket())
-                    return@execute
-                }
-
-                AuthManager.markPremiumSession(player)
-                val storage = TAuthHolder.storage
-                val data = storage.get(name)
-                if (data == null) {
-                    AuthPackets.sendToPlayer(player,
-                        result(false, AuthPackets.CODE_NOT_REGISTERED,
-                            ServerI18n.fallback(I18nKeys.NOT_REGISTERED_GUI), policy = storage.hashPolicy()))
-                    return@execute
-                }
-
-                if (data.verified) {
-                    storage.updateVerification(name, isPremium = true, loginType = "online")
-                    finishLogin(player)
-                    AuthPackets.sendToPlayer(player,
-                        result(true, AuthPackets.CODE_LOGIN_OK, ServerI18n.fallback(I18nKeys.LOGIN_SUCCESS)))
-                } else {
-                    AuthPackets.sendToPlayer(player, AuthPackets.StartAuthPacket())
-                }
-            }
-        }
     }
 
     /** 客户端发起登录请求：生成挑战并回发。 */
