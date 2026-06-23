@@ -191,7 +191,7 @@ object ClientAuthHandler {
 
     private fun sendLoginRequest(mode: String, name: String) {
         val machineId = if (AutoLoginManager.isAutoLoginEnabled()) AutoLoginManager.machineId().toString() else null
-        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId))
+        AuthPackets.sendToServer(AuthPackets.LoginRequestPacket(mode, name, machineId, isPremiumSessionAvailable()))
     }
 
     private fun isPremiumSessionAvailable(): Boolean {

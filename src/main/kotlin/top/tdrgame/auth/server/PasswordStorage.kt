@@ -156,6 +156,7 @@ class PasswordStorage(
             repo.update(data.copy(
                 passwordHash = hash,
                 verified = false,
+                premiumUuid = null,
                 lastLoginType = null,
                 autoLoginMachineId = null,
                 autoLoginIp = null

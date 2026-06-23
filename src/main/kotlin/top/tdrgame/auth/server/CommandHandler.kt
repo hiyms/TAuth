@@ -122,7 +122,7 @@ object CommandHandler {
                     .executes { ctx ->
                         val targetName = StringArgumentType.getString(ctx, "player")
                         if (!AuthConfig.enabled.get()) return@executes 1
-                        handleUnpremiumTarget(targetName, ctx.source.playerOrException)
+                        handleUnpremiumTarget(targetName, ctx.source)
                         return@executes 1
                     }))
 
@@ -157,15 +157,15 @@ object CommandHandler {
         player.sendSystemMessage(Component.literal("正版免密已关闭。").withStyle(net.minecraft.ChatFormatting.GREEN))
     }
 
-    private fun handleUnpremiumTarget(targetName: String, sourcePlayer: ServerPlayer) {
+    private fun handleUnpremiumTarget(targetName: String, source: net.minecraft.commands.CommandSourceStack) {
         val storage = TAuthHolder.storage
         if (!storage.isRegistered(targetName)) {
-            sourcePlayer.sendSystemMessage(Component.literal("玩家 $targetName 未注册。").withStyle(net.minecraft.ChatFormatting.RED))
+            source.sendFailure(Component.literal("玩家 $targetName 未注册。"))
             return
         }
         storage.clearPremium(targetName)
         PremiumLoginVerifier.consumeVerified(targetName)
-        sourcePlayer.sendSystemMessage(Component.literal("$targetName 的正版免密已关闭。").withStyle(net.minecraft.ChatFormatting.GREEN))
+        source.sendSuccess({ Component.literal("$targetName 的正版免密已关闭。").withStyle(net.minecraft.ChatFormatting.GREEN) }, true)
     }
 
     private fun handlePremium(player: ServerPlayer) {
@@ -423,6 +423,10 @@ object CommandHandler {
         PremiumLoginVerifier.verifyNonceAsync(player.server, player.name.string, nonce)
             .whenComplete { result, throwable ->
                 player.server.execute {
+                    val current = player.server.playerList.getPlayerByName(name)
+                    if (current !== player || !player.connection.connection.isConnected || AuthManager.isAuthenticated(player)) {
+                        return@execute
+                    }
                     if (throwable != null || result == null) {
                         TAuth.LOGGER.info("Premium auto-proof failed for {}, falling back to password", name)
                         sendPasswordChallenge(player)
