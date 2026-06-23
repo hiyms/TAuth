@@ -86,7 +86,7 @@ public abstract class PremiumLoginMixin {
                     tauth$setState(tauth$state("NEGOTIATING"));
                     return;
                 }
-                PremiumLoginVerifier.INSTANCE.storeVerified(name, result.getProfile().getId());
+                PremiumLoginVerifier.INSTANCE.storeVerified(name, result.getProfile().getId(), result.getTextures());
                 tauth$setState(tauth$state("NEGOTIATING"));
             });
     }

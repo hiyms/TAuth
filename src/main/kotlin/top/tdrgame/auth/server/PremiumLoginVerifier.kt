@@ -1,6 +1,7 @@
 package top.tdrgame.auth.server
 
 import com.mojang.authlib.GameProfile
+import com.mojang.authlib.properties.Property
 import net.minecraft.network.Connection
 import net.minecraft.network.protocol.login.ServerboundKeyPacket
 import net.minecraft.server.MinecraftServer
@@ -28,7 +29,7 @@ import javax.crypto.spec.SecretKeySpec
  */
 object PremiumLoginVerifier {
 
-    data class VerificationResult(val profile: GameProfile)
+    data class VerificationResult(val profile: GameProfile, val textures: Collection<Property>?)
     data class EncryptionContext(val decryptCipher: Cipher, val encryptCipher: Cipher, val sharedSecret: ByteArray) {
         fun secretKey() = SecretKeySpec(sharedSecret, "AES")
     }
@@ -39,6 +40,7 @@ object PremiumLoginVerifier {
 
     private val random = SecureRandom()
     private val verifiedSessions = ConcurrentHashMap<String, UUID>()
+    private val pendingTextures = ConcurrentHashMap<String, Collection<Property>>()
     private val pendingPremium = ConcurrentHashMap<String, PendingPremium>()
 
     fun shouldVerify(server: MinecraftServer, connection: Connection, name: String): Boolean {
@@ -101,7 +103,8 @@ object PremiumLoginVerifier {
             if (!profile.name.equals(name, ignoreCase = true) || profile.id == UUIDUtil.createOfflinePlayerUUID(profile.name)) {
                 return@supplyAsync null
             }
-            VerificationResult(profile)
+            val textures = profile.properties["textures"]
+            VerificationResult(profile, textures)
         } catch (exception: Exception) {
             TAuth.LOGGER.warn("Premium verification failed for {}: {}", name, exception.message)
             null
@@ -123,15 +126,21 @@ object PremiumLoginVerifier {
         return true
     }
 
-    fun storeVerified(name: String, uuid: UUID) {
+    fun storeVerified(name: String, uuid: UUID, textures: Collection<Property>? = null) {
         verifiedSessions[name.lowercase()] = uuid
         TAuth.LOGGER.info("Premium login verification succeeded for {} ({})", name, uuid)
+        if (textures != null && textures.isNotEmpty()) {
+            pendingTextures[name.lowercase()] = textures
+        }
         if (pendingPremium.remove(name.lowercase()) != null) {
             runCatching {
                 TAuthHolder.storage.updateVerification(name, isPremium = true, loginType = "online", premiumUuid = uuid)
             }
         }
     }
+
+    fun consumeTextures(name: String): Collection<Property>? =
+        pendingTextures.remove(name.lowercase())
 
     /** hasJoined with nonce-based verification (for client auto-proof). */
     fun verifyNonceAsync(server: MinecraftServer, name: String, nonce: String): CompletableFuture<GameProfile?> =
