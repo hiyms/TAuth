@@ -16,7 +16,6 @@ import top.tdrgame.auth.TAuth
 import top.tdrgame.auth.config.AuthConfig
 import top.tdrgame.auth.i18n.ServerI18n
 import top.tdrgame.auth.network.AuthPackets
-import top.tdrgame.auth.server.PremiumLoginVerifier
 
 /**
  * 事件拦截层：限制未认证玩家的所有敏感行为。
@@ -75,17 +74,6 @@ object EventHandler {
         TAuth.LOGGER.debug("Player {} joined. premium={}, registered={}, verified={}",
             name, isPremium, isRegistered, isVerified)
         AuthManager.onPlayerJoin(player, isPremium, isVerified, isRegistered)
-
-        // Apply Mojang skin/textures if available
-        val textures = PremiumLoginVerifier.consumeTextures(name)
-        if (textures != null && textures.isNotEmpty()) {
-            val profile = player.gameProfile
-            profile.properties.removeAll("textures")
-            textures.forEach { profile.properties.put("textures", it) }
-            TAuth.LOGGER.debug("Applied Mojang textures for {}", name)
-            // Refresh player list to show updated skin
-            player.server.playerList.sendAllPlayerInfo(player)
-        }
 
         if (!AuthManager.isAuthenticated(player)) {
             TAuth.LOGGER.debug("Auth enforcement active for player {}; hiding inventory and waiting for login/register.", name)

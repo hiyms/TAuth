@@ -19,6 +19,7 @@ import top.tdrgame.auth.config.AuthConfig;
 import top.tdrgame.auth.server.PremiumLoginVerifier;
 
 import java.lang.reflect.Field;
+import java.util.Collection;
 import java.util.UUID;
 
 /** AuthMe-style premium bypass for offline-mode Forge servers. */
@@ -91,6 +92,21 @@ public abstract class PremiumLoginMixin {
             });
     }
 
+    /** Inject textures into gameProfile BEFORE placeNewPlayer sends initial player info. */
+    @Inject(method = "handleAcceptedLogin", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;placeNewPlayer(Lnet/minecraft/network/Connection;Lnet/minecraft/server/level/ServerPlayer;)V"))
+    private void tauth$injectTexturesBeforeBroadcast(CallbackInfo ci) {
+        if (this.tauth$premiumName != null) return;
+        GameProfile profile = tauth$getGameProfile();
+        if (profile == null) return;
+        Collection<com.mojang.authlib.properties.Property> textures = PremiumLoginVerifier.INSTANCE.consumeTextures(profile.getName());
+        if (textures != null && !textures.isEmpty()) {
+            profile.getProperties().removeAll("textures");
+            for (com.mojang.authlib.properties.Property tex : textures) {
+                profile.getProperties().put("textures", tex);
+            }
+        }
+    }
+
     @Unique
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static Object tauth$state(String name) {
@@ -125,6 +141,11 @@ public abstract class PremiumLoginMixin {
     @Unique
     private void tauth$setState(Object state) {
         tauth$setField(state, "state", "f_10019_");
+    }
+
+    @Unique
+    private GameProfile tauth$getGameProfile() {
+        return (GameProfile) tauth$getField("gameProfile", "f_10021_");
     }
 
     @Unique
